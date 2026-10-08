@@ -51,10 +51,11 @@ This file gives project context for agents working in this repo. Read it before 
 - `schema/explainer.schema.json` is the manifest contract.
 - `demo/` is the gallery.
   - `demo/media/` and `demo/video/` are **git-ignored** and hold local clips.
-- `examples/creation/` is the the-system-networks scroll steps. `examples/equilibrium/` is the equilibrium.cards opening hero. Each has its own README with findings.
+- `examples/creation/` is the the-system-networks scroll steps. `examples/equilibrium/` is the equilibrium.cards opening hero. `examples/video/` is two talking-head clips with overlays, captions and a held choice: the reference for real media. Each has its own README with findings.
+- `examples/video/prepare.sh` makes the media working copies in `demo/video/` (0.5 s keyframes, faststart, VTT from the embedded subtitles). Run it on a fresh checkout. `examples/video/check.mjs` measures the media sync paths in headless Chromium.
 
 ## Commands and gates
-- `npm run dev`, then open /demo/, /examples/creation/ or /examples/equilibrium/.
+- `npm run dev`, then open /demo/, /examples/creation/, /examples/equilibrium/ or /examples/video/.
 - Gates, judged by exit code: `npm test` (node --test over test/ and examples/), `npx tsc --noEmit`, `npm run build`.
 - Headless browser checks use the playwright install at `/home/greenman/dev/semanticops/srs-web/node_modules/playwright/index.mjs` (chromium is installed). Serve with `npx vite --port 5199 --strictPort` from the repo root.
 
@@ -65,16 +66,14 @@ This file gives project context for agents working in this repo. Read it before 
 - **Merging:** reviewed, green, technical PRs may be auto-merged unless the owner needs to weigh in.
 - **Session role:** the session orchestrates, and Sonnet subagents do the unit work. Give each one a precise brief and review its output; never trust its report alone. The gallery 404 and the click-swallowing layer bug were both missed in agent reports.
 
-## Current state (2026-10-08)
-- Branch `feat/30-player-core`, PR #1 (not merged). It contains the player core, both probe examples (merged in from `feat/30-creation-example` and `feat/30-equilibrium-example`), the core fixes from the probes, and the video example.
-- `examples/video/` (from `feat/30-video-example`) is the first run with real media. The owner viewed it and it works. Video sync is verified in headless Chromium: forward, reverse, scrub, segment switch, and hold with `loop_from`. Numbers are in `examples/video/README.md`. 38 tests pass. Audio-only segments are still untested with a file.
-- Working copies of the clips come from `examples/video/prepare.sh`: 0.5 s keyframes plus VTT, written to `demo/video/`, git-ignored. Re-run it on a fresh checkout.
+## Current state
+- **Done:** plan step 2. That covers the clock, player, triggers, store, core components and gallery, plus the two capability probes, with their core fixes. Everything is on `main`.
+- **Real media:** video is verified with real clips in `examples/video/`: forward, rate, reverse, scrub, segment switch, and hold with `loop_from`. Audio-only segments are not yet tested with a file. Safari, Firefox, phones and R2 delivery are also untested.
 
 ## Next steps
-1. **Video follow-ups (owner calls).**
-   - The segment switch shows a freeze of about 120 ms on localhost. Decide between a second preloaded media element and choosing cut points.
-   - `back()` after a held choice should probably re-show the choice.
-   - Tune the emphasis word timings by ear.
+1. **Media follow-ups (owner calls).**
+   - Switching `src` between segments freezes for about 120 ms (`ponytail:` in `player.ts`). Choose between a second preloaded media element and choosing cut points.
+   - `back()` after a held choice does not re-show the choice.
 2. **SRS package (plan step 3).**
    - `srs/` holds the `com.semanticops.explainer` types: segment, marker, component types, choice/choice-option, variable, and the `goes-to` relation type.
    - Add specimen records and a generic `scripts/export.mjs` (srs CLI → manifest), then replace the placeholder `renders` refs.
