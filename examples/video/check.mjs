@@ -1,4 +1,4 @@
-// Headless-Chromium measurements of the real-media paths (needs demo/video/{intro,purpose}.mp4 from prepare.sh).
+// Headless-Chromium measurements of the real-media paths (needs demo/video/decision-records.{mp4,vtt} from prepare.sh).
 //   npx vite --port 5199 --strictPort &      (from the repo root)
 //   node examples/video/check.mjs [shotDir]
 // Prints a results table. User gestures are real page clicks; the scrub slider is driven by dispatching `input`
@@ -188,7 +188,7 @@ for (const rate of [1, 2]) {
   await done(page);
 }
 
-/* ---------- c. boundary intro -> purpose while playing ---------- */
+/* ---------- c. boundary intro -> purpose while playing (one file, two cuts) ---------- */
 {
   const page = await fresh();
   await page.evaluate(() => window.__p.seek(35));
@@ -199,35 +199,30 @@ for (const rate of [1, 2]) {
   const { log, ev, vfc } = await grab(page);
   const swap = log.findIndex((x) => x.seg === 'purpose');
   const swapW = log[swap].w;
-  const lastIntroFrame = vfc.filter((f) => f.src.startsWith('intro')).at(-1);
-  const firstPurposeFrame = vfc.find((f) => f.src.startsWith('purpose'));
-  row('c boundary', 'last intro frame mediaTime -> first purpose frame mediaTime', `${r(lastIntroFrame.mt, 2)} -> ${r(firstPurposeFrame.mt, 2)}`);
-  row('c boundary', 'gap between last intro frame and first purpose frame (ms)', r(firstPurposeFrame.w - lastIntroFrame.w, 0), 'normal frame interval ~33 ms');
-  row('c boundary', 'segment change -> first purpose frame (ms)', r(firstPurposeFrame.w - swapW, 0));
-  const evs = (n) => ev.find((e) => e.e === n && e.w >= swapW - 5);
-  for (const n of ['loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'playing', 'seeked']) { const e = evs(n); row('c boundary', `event ${n} after swap (ms)`, e ? r(e.w - swapW, 0) : 'none'); }
-  // clock continuity: per-frame clock.t deltas across the boundary
-  const around = log.slice(Math.max(0, swap - 8), swap + 150);
-  let maxJump = 0, stallFrames = 0, stallMs = 0, prev = null;
-  for (const x of around) {
-    if (prev && x.seg === prev.seg) { const dt = (x.w - prev.w) / 1000, dc = x.t - prev.t; maxJump = Math.max(maxJump, Math.abs(dc - dt)); if (Math.abs(dc) < 1e-6 && dt > 0.01) { stallFrames++; stallMs += dt * 1000; } }
-    prev = x;
-  }
+  // frame timeline across the cut: the first frame presented while the clock says purpose, +-15 frames
+  const k = vfc.findIndex((f) => f.seg === 'purpose');
+  const win = vfc.slice(Math.max(0, k - 15), k + 16);
+  const dws = win.slice(1).map((f, i) => f.w - win[i].w);
+  const dms = win.slice(1).map((f, i) => f.mt - win[i].mt);
+  row('c boundary', 'frame timeline +-15 frames around the cut: inter-frame wall ms', dws.map((x) => x.toFixed(0)).join(' '), 'normal ~33 ms; cut is between the 15th and 16th interval');
+  row('c boundary', 'worst inter-frame gap in the window (ms) / frames dropped over the window', `${r(Math.max(...dws), 0)} / ${r(Math.max(0, (win.at(-1).w - win[0].w) / 33.33 - (win.length - 1)), 1)}`, 'was 316 ms with separate files (133 first-frame + 183 stall)');
+  row('c boundary', 'mediaTime across the cut: min / max step between frames (s)', `${r(Math.min(...dms), 3)} / ${r(Math.max(...dms), 3)}`, 'min < 0 would be a backward snap');
+  row('c boundary', 'mediaTime at the first frame the clock calls purpose', r(vfc[k].mt, 3), 'purpose in = 38.6; video is 0.021 later than audio');
+  const near = ev.filter((e) => Math.abs(e.w - swapW) < 400).map((e) => e.e);
+  row('c boundary', 'media events within +-400 ms of the cut', near.length ? near.join(',') : 'none', 'loadstart / seeking / waiting would mean a reload or a seek');
   const lastI = log[swap - 1], firstP = log[swap];
   row('c boundary', 'clock.t last intro sample -> first purpose sample', `${r(lastI.t, 3)} (${lastI.seg}) -> ${r(firstP.t, 3)} (${firstP.seg})`);
-  const stallRun = []; let run = 0, runMs = 0, longest = 0;
-  for (let i = swap; i < log.length && log[i].t < 2.5; i++) { if (log[i].t === log[swap].t || Math.abs(log[i].t - log[i - 1].t) < 1e-6) { run++; runMs += log[i].w - log[i - 1].w; } else { longest = Math.max(longest, runMs); run = 0; runMs = 0; } }
+  let longest = 0, runMs = 0;
+  for (let i = swap; i < log.length && log[i].t < 2.5; i++) { if (Math.abs(log[i].t - log[i - 1].t) < 1e-6) runMs += log[i].w - log[i - 1].w; else { longest = Math.max(longest, runMs); runMs = 0; } }
   longest = Math.max(longest, runMs);
-  row('c boundary', 'longest clock.t stall after the swap (ms)', r(longest, 0), 'clock frozen while the new file loads (media drives)');
-  row('c boundary', 'max |dClock - dWall| within a segment, across window (s/frame)', r(maxJump, 3));
-  const dAfter = log.slice(swap).filter((x) => x.t > 0.3 && x.playing).map((x) => Math.abs(x.ct - x.t));
-  row('c boundary', 'after swap |currentTime - clock.t| max (s)', r(Math.max(...dAfter), 4));
-  // captions
-  const cap = await page.evaluate(() => { const v = window.__p.querySelector('video'); return { n: v.textTracks.length, tr: [...v.textTracks].map((t) => ({ mode: t.mode, cues: t.cues?.length ?? -1, src: v.querySelector('track')?.getAttribute('src') })), active: [...(v.textTracks[0]?.activeCues ?? [])].map((c) => c.text) }; });
-  row('c boundary', 'captions after swap', JSON.stringify(cap), 'track element replaced with purpose.vtt?');
+  row('c boundary', 'longest clock.t stall after the cut (ms)', r(longest, 0));
+  const dAfter = log.slice(swap).filter((x) => x.t > 0.3 && x.playing).map((x) => Math.abs(x.ct - 38.6 - x.t));
+  row('c boundary', 'after the cut |currentTime - (in + clock.t)| max (s)', r(Math.max(...dAfter), 4));
+  const cap = await page.evaluate(() => { const v = window.__p.querySelector('video'); return { n: v.textTracks.length, tr: [...v.textTracks].map((t) => ({ mode: t.mode, cues: t.cues?.length ?? -1, src: v.querySelector('track')?.getAttribute('src').split('/').pop() })) }; });
+  row('c boundary', 'captions after the cut', JSON.stringify(cap), 'one track for the whole file, both segments');
   await sleep(1500);
-  const shot = await page.evaluate(() => [...window.__p.querySelector('video').textTracks[0].activeCues].map((c) => c.text));
-  row('c boundary', 'active caption cue text at purpose t~4', JSON.stringify(shot));
+  const shot = await page.evaluate(() => { const v = window.__p.querySelector('video'); return { ct: +v.currentTime.toFixed(2), active: [...v.textTracks[0].activeCues].map((c) => c.text) }; });
+  row('c boundary', 'active caption cue at purpose t~4', JSON.stringify(shot), 'want "Have you ever been in a meeting" (purpose cue 1.284-5.683)');
   await done(page);
 }
 
@@ -245,10 +240,10 @@ for (const rate of [1, 2]) {
   const { log, ev, vfc } = await grab(page);
   const swap = log.findIndex((x) => x.seg === 'intro');
   const sw = log[swap].w;
-  row('d reverse boundary', 'clock.t last purpose sample -> first intro sample', `${r(log[swap - 1].t, 3)} -> ${r(log[swap].t, 3)}`, 'history entry was intro @ end');
-  const e1 = ev.find((e) => e.e === 'loadedmetadata' && e.w >= sw - 5), e2 = ev.find((e) => e.e === 'seeked' && e.w >= sw - 5 && e.src.startsWith('intro'));
-  row('d reverse boundary', 'swap -> loadedmetadata / seeked at intro (ms)', `${e1 ? r(e1.w - sw, 0) : 'none'} / ${e2 ? r(e2.w - sw, 0) : 'none'}`);
-  const f1 = vfc.find((f) => f.src.startsWith('intro') && f.w >= sw);
+  row('d reverse boundary', 'clock.t last purpose sample -> first intro sample', `${r(log[swap - 1].t, 3)} -> ${r(log[swap].t, 3)}`, 'path entry {intro, 38.6, to purpose} popped');
+  const near = ev.filter((e) => Math.abs(e.w - sw) < 300 && ['loadstart', 'loadedmetadata', 'emptied'].includes(e.e));
+  row('d reverse boundary', 'reload events within +-300 ms of the cut', near.length ? near.map((e) => e.e).join(',') : 'none');
+  const f1 = vfc.find((f) => f.seg === 'intro' && f.w >= sw);
   row('d reverse boundary', 'swap -> first intro frame presented (ms), its mediaTime', f1 ? `${r(f1.w - sw, 0)}, ${r(f1.mt, 2)}` : 'none');
   const after = log.slice(swap + 1).filter((x) => x.w - sw > 600);
   const d = after.map((x) => Math.abs(x.ct - x.t));
@@ -288,8 +283,23 @@ async function toHold(page, from = 45.5) {
   row('e hold', 'click "Replay the four questions" -> 1.5 s later', JSON.stringify(s2), 'want intro, t~16.5, playing, src intro.mp4');
   await page.click('[data-explainer-action=back]');
   await sleep(700);
-  s2 = await page.evaluate(() => { const c = window.__p.clock; const v = window.__p.querySelector('video'); return { seg: c.segmentId, t: +c.t.toFixed(2), ct: +v.currentTime.toFixed(2), playing: c.playing, hold: c.holding?.id ?? null, src: v.currentSrc.split('/').pop() }; });
-  row('e hold', 'back() afterwards', JSON.stringify(s2), 'returns to purpose @48.6; not re-held (see README)');
+  const bk = () => page.evaluate(() => { const c = window.__p.clock; const v = window.__p.querySelector('video'); return { seg: c.segmentId, t: +c.t.toFixed(2), ct: +v.currentTime.toFixed(2), playing: c.playing, hold: c.holding?.id ?? null, paused: v.paused, hist: c.history.length, btns: window.__p.querySelectorAll('button[data-option]').length }; });
+  row('e hold', 'back() afterwards', JSON.stringify(await bk()), 'want purpose, t 48.6, playing false, hold=choice, media looping 47.0-48.6, 3 buttons, hist 0');
+  await sleep(2500);
+  const ct2 = await page.evaluate(() => window.__p.querySelector("video").currentTime);
+  row('e hold', 'after back(), 2.5 s later: still held, clock.t, media currentTime in loop range', JSON.stringify({ ...(await bk()), ct: +ct2.toFixed(2) }));
+  await page.keyboard.press('2');
+  await sleep(1500);
+  row('e hold', 'key "2" after back() (Replay the four questions)', JSON.stringify(await bk()), 'want intro, t~16.5, playing, hist 1');
+  {
+    // reverse after option 2: must unwind at the landing point (intro 15), not run to intro 0
+    await page.evaluate(() => { const p = window.__p; window.__rev = []; p.setRate(-1); p.play(); const f = () => { const c = p.clock; window.__rev.push([c.segmentId, +c.t.toFixed(2), c.holding?.id ?? null]); if (window.__rev.length < 400) requestAnimationFrame(f); }; f(); });
+    await sleep(2500);
+    const rev = await page.evaluate(() => window.__rev);
+    const minIntro = Math.min(...rev.filter((x) => x[0] === 'intro').map((x) => x[1]));
+    const popAt = rev.findIndex((x) => x[0] === 'purpose');
+    row('e hold', 'reverse after option 2: lowest intro t visited / clock at the pop', `${minIntro} / ${popAt >= 0 ? JSON.stringify(rev[popAt]) : 'no pop'} / hist ${await page.evaluate(() => window.__p.clock.history.length)}`, 'want min ~15.0 (landing), then purpose 48.6, history 0');
+  }
   await done(page);
 }
 {
@@ -323,19 +333,7 @@ async function toHold(page, from = 45.5) {
   const { log, ev } = await grab(page);
   const e = ev.find((x) => x.e === 'ended');
   const last = log.at(-1);
-  row('f ended', 'purpose end (out 48.7 == file): clock.t / playing / segment / video.ended / currentTime', `${r(last.t, 3)} / ${last.playing} / ${last.seg} / ${last.ended} / ${r(last.ct, 3)}`, e ? `ended event ${r(e.ct, 3)}` : 'no ended event');
-  await done(page);
-}
-{
-  const page = await fresh();
-  await page.evaluate(() => window.__p.seek(38.3));
-  await sleep(800);
-  await mark(page);
-  await page.click('[data-explainer-action=play]');
-  await sleep(2500);
-  const { ev } = await grab(page);
-  const e = ev.find((x) => x.e === 'ended');
-  row('f ended', 'intro end (out 38.6 == file): ended event at media time / next segment reached', e ? `${r(e.ct, 3)} / ${e.seg}` : 'no ended event', 'ended event never observed on intro: the swap to purpose happens first (src reassigned), so it is dropped');
+  row('f ended', 'purpose end (out 87.3 vs file 87.32): clock.t / playing / segment / video.ended / currentTime', `${r(last.t, 3)} / ${last.playing} / ${last.seg} / ${last.ended} / ${r(last.ct, 3)}`, e ? `ended event ${r(e.ct, 3)}` : 'no ended event');
   await done(page);
 }
 

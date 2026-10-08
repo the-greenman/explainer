@@ -5,18 +5,18 @@
     {
       "id": "intro",
       "kind": "video",
-      "src": "../../demo/video/intro.mp4",
+      "src": "../../demo/video/decision-records.mp4",
       "in": 0,
       "out": 38.6,
-      "captions": "../../demo/video/intro.vtt"
+      "captions": "../../demo/video/decision-records.vtt"
     },
     {
       "id": "purpose",
       "kind": "video",
-      "src": "../../demo/video/purpose.mp4",
-      "in": 0,
-      "out": 48.7,
-      "captions": "../../demo/video/purpose.vtt",
+      "src": "../../demo/video/decision-records.mp4",
+      "in": 38.6,
+      "out": 87.3,
+      "captions": "../../demo/video/decision-records.vtt",
       "ends": "stop"
     }
   ],

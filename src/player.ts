@@ -90,8 +90,9 @@ export class ExplainerPlayer extends HTMLElement {
     this.dispatchEvent(new CustomEvent(name, { bubbles: true, detail }));
   }
 
-  // ponytail: one media element, src reassigned on segment change (gap visible between different files);
-  // preload a second element and swap if the gap matters.
+  // ponytail: one media element, src reassigned on segment change. Separate files still gap (~300 ms measured
+  // locally); the chosen mitigation is one file per explainer with segments as in/out cuts (same src: no reload,
+  // and no re-seek when already at the cut). A second preloaded element stays in reserve for multi-file explainers.
   private loadSegment() {
     const s = this.clock.segment;
     const want = s.kind === 'none' ? null : s.kind;
@@ -115,7 +116,8 @@ export class ExplainerPlayer extends HTMLElement {
         this.media = el;
       }
     }
-    if (this.media && s.src !== this.curSrc) {
+    const swap = !!this.media && s.src !== this.curSrc;
+    if (this.media && swap) {
       this.media.src = this.curSrc = s.src ?? '';
       // a displayed cue of a removed track stays painted (seen in Chromium) unless the track is disabled first
       for (const t of Array.from(this.media.textTracks)) t.mode = 'disabled';
@@ -126,7 +128,9 @@ export class ExplainerPlayer extends HTMLElement {
         this.media.append(tr);
       }
     }
-    this.syncMedia(true);
+    // same file and already at the new segment's start (an adjacent cut): don't re-seek, it would snap back and stall
+    const m = this.media;
+    this.syncMedia(swap || !m || Math.abs(m.currentTime - ((s.in ?? 0) + this.clock.t)) > 0.1);
   }
 
   private syncMedia(seek: boolean) {

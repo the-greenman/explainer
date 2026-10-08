@@ -7,7 +7,9 @@ The player owns a virtual clock `{segmentId, t, rate, playing}` (`t` in seconds 
 - Forward with media: media plays natively, the clock *reads* `currentTime`.
 - Reverse / scrub / no media: media is paused and muted, the clock advances itself and *writes* `currentTime`.
 
-A segment graph with a history stack: reversing past a segment start returns to the previous *history* entry at its exit time; `back()` does the same as a step.
+A segment graph with a history of the *path taken*. Only default continuation and choices (`goes_to`) push an entry `{segmentId, t, to, hold?}`; navigation (`jumpTo`, markers, prev/next, scroll sections, the `jump` command, `seek` with `to`) never does. Reversing unwinds a branch when it crosses where that branch landed (any time within the segment; below 0 it also pops a branch into the segment); with none, it goes to the end of the segment that continues into it (`next` or array order); with none, it stops at 0. `back()` pops the last entry and goes there; if it was left from a held choice, the choice is shown again (paused, keys 1-n work).
+
+Segments of one `src` are `in`/`out` cuts: compile an explainer's media to one file where possible, and crossing a cut does not reload or re-seek.
 
 ## Manifest
 Schema: `schema/explainer.schema.json`.
@@ -20,7 +22,7 @@ Schema: `schema/explainer.schema.json`.
 Choice options (`items` of a choice cue): `{id, label, goes_to?, sets_variable?, sets_value?}`. For `kind: none`, `out - in` is the duration.
 
 ## Commands and events
-Public methods: `play pause seek(t) setRate(r) jumpTo(id) back choose(optionId)` (negative rate = reverse).
+Public methods: `play pause seek(t) setRate(r) jumpTo(id) back choose(optionId)` (negative rate = reverse). `jumpTo` is navigation and does not touch history; `choose` with `goes_to` is a branch and does.
 Dispatch `explainer:command` with `detail: {action: play|pause|seek|rate|jump|back|choose|set, to?, rate?, t?, option?, var?, value?, target?}` on a player or the document (document: the first player, or those matching `detail.target`; `rate` also starts playback).
 Buttons: `[data-explainer-action="play|pause|seek|rate|jump|back"]` with `data-explainer-to` / `data-explainer-value`, optional `data-explainer-target="selector"`. Scroll sections: `[data-explainer-seek="markerId"]`.
 Emitted (bubbling): `explainer:segment`, `explainer:cueenter`, `explainer:cueexit`, `explainer:choice`.

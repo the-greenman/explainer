@@ -8,6 +8,8 @@ export type Cue = {
 };
 export type Manifest = { id: string; title?: string; segments: Segment[]; markers?: Marker[]; cues: Cue[] };
 export type Pos = { segmentId: string; t: number };
+/** One step of the path taken: left `segmentId` at `t` and landed in segment `to` at `toT` (`hold`: id of the held choice cue it was chosen from). */
+export type Entry = Pos & { to: string; toT: number; hold?: string };
 export type Hooks = { segment?: (id: string) => void; hold?: (cue: Cue) => void; set?: (name: string, value: string) => void };
 
 export const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -20,7 +22,7 @@ export class Clock {
   t = 0;
   rate = 1;
   playing = false;
-  history: Pos[] = [];
+  history: Entry[] = [];
   holding: Cue | null = null;
   manifest: Manifest;
   hooks: Hooks;
@@ -42,16 +44,18 @@ export class Clock {
   /** media drives the clock */
   setTime(t: number) { this.advance(t); }
 
+  /** Navigation (markers, prev/next, scroll sections): moves, never touches history. */
   jumpTo(id: string) {
     const to = this.resolve(id);
-    if (!to) return;
-    this.history.push({ segmentId: this.segmentId, t: this.t });
-    this.goto(to);
+    if (to) this.goto(to);
   }
 
+  /** Step back along the path taken: pop the last entry and go there; a choice is shown again (held). */
   back() {
     const e = this.history.pop();
-    if (e) this.goto(e);
+    if (!e) return;
+    const hold = e.hold ? this.manifest.cues.find((c) => c.id === e.hold) : undefined;
+    this.goto(e, hold);
   }
 
   choose(optionId: string) {
@@ -60,7 +64,7 @@ export class Clock {
     const opt: Option | undefined = cues.flatMap((c) => c.items ?? []).find((o) => o.id === optionId);
     if (!opt) return;
     if (opt.sets_variable) this.hooks.set?.(opt.sets_variable, opt.sets_value ?? '');
-    if (opt.goes_to) this.jumpTo(opt.goes_to);
+    if (opt.goes_to) this.branch(opt.goes_to, this.holding?.id);
     this.play();
   }
 
@@ -70,16 +74,39 @@ export class Clock {
     return this.manifest.segments.some((s) => s.id === id) ? { segmentId: id, t: 0 } : undefined;
   }
 
-  private goto(p: Pos) {
-    this.holding = null;
+  /** Take a branch of the path: like jumpTo, but records where it left from. */
+  private branch(id: string, hold?: string) {
+    const to = this.resolve(id);
+    if (!to) return;
+    this.history.push({ segmentId: this.segmentId, t: this.t, to: to.segmentId, toT: to.t, ...(hold ? { hold } : {}) });
+    this.goto(to);
+  }
+
+  /** `hold`: restore that choice cue as held (paused, choice showing). */
+  private goto(p: Pos, hold?: Cue) {
+    this.holding = hold ?? null;
+    if (hold) this.playing = false;
     const changed = p.segmentId !== this.segmentId;
     this.segmentId = p.segmentId;
     this.t = p.t;
     if (changed) this.hooks.segment?.(p.segmentId);
   }
 
+  /** Segment that continues into `id` by `next` or array order. */
+  private predecessor(id: string): Segment | undefined {
+    const list = this.manifest.segments;
+    return list.find((s, i) => {
+      if (s.id === id || s.ends === 'stop') return false;
+      const nextId = s.next === undefined ? list[i + 1]?.id : s.next;
+      return !!nextId && this.resolve(nextId)?.segmentId === id;
+    });
+  }
+
   private advance(nt: number) {
     const old = this.t;
+    const top = this.history.at(-1);
+    // reversing across where the top branch landed unwinds it (any t): back to where it was taken from
+    if (nt < old && top && top.to === this.segmentId && old >= top.toT && top.toT > nt) return this.goto(this.history.pop()!);
     if (nt > old) {
       const hold = this.manifest.cues
         .filter((c) => c.segment === this.segmentId && c.hold && c.end > old && c.end <= nt)
@@ -93,8 +120,10 @@ export class Clock {
       }
       if (nt >= this.length) return this.finishSegment();
     } else if (nt < 0) {
-      const e = this.history.pop();
-      if (e) this.goto(e);
+      // past the start (e.g. navigated to before the landing point): pop a branch into here, else the default predecessor's end, else stop
+      const pred = this.predecessor(this.segmentId);
+      if (top && top.to === this.segmentId) this.goto(this.history.pop()!);
+      else if (pred) this.goto({ segmentId: pred.id, t: pred.out - (pred.in ?? 0) });
       else { this.t = 0; this.playing = false; }
       return;
     }
@@ -108,7 +137,7 @@ export class Clock {
     const to = s.ends === 'stop' || !nextId ? undefined : this.resolve(nextId);
     this.t = this.length;
     if (!to) { this.playing = false; return; }
-    this.history.push({ segmentId: this.segmentId, t: this.t });
+    this.history.push({ segmentId: this.segmentId, t: this.t, to: to.segmentId, toT: to.t });
     this.goto(to);
   }
 }
