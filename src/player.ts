@@ -4,7 +4,7 @@ import { gate, scopeFor, type Store } from './store.ts';
 import { bindPlayMode } from './triggers.ts';
 
 type Entry = { cue: Cue; comp: Component; node: Element; wrap: HTMLElement; data: Record<string, any>; shown: boolean };
-export type Command = { action: string; to?: string; rate?: number; t?: number; option?: string; var?: string; value?: string };
+export type Command = { action: string; to?: string; rate?: number; t?: number; option?: string; depth?: number; hold?: boolean; var?: string; value?: string };
 
 export class ExplainerPlayer extends HTMLElement {
   clock!: Clock;
@@ -19,6 +19,7 @@ export class ExplainerPlayer extends HTMLElement {
   private raf = 0;
   private cleanup: (() => void)[] = [];
   private reduced = false;
+  private sig = '';
 
   set manifest(m: Manifest) { this.pending = m; if (this.isConnected) this.init(m); }
   get manifest() { return this.clock.manifest; }
@@ -69,6 +70,8 @@ export class ExplainerPlayer extends HTMLElement {
       return { cue, comp, node: comp.mount(wrap, data), wrap, data, shown: false };
     });
     this.loadSegment();
+    this.sig = '';
+    this.pathChanged();
 
     const onCmd = (e: Event) => this.command((e as CustomEvent<Command>).detail);
     this.addEventListener('explainer:command', onCmd);
@@ -148,6 +151,15 @@ export class ExplainerPlayer extends HTMLElement {
     } else m.pause();
   }
 
+  /** `explainer:path` when the history length, segment or held choice changed (a cheap signature, compared each step). */
+  private pathChanged() {
+    const c = this.clock;
+    const sig = `${c.history.length}|${c.segmentId}|${c.holding?.id ?? ''}`;
+    if (sig === this.sig) return;
+    this.sig = sig;
+    this.emit('explainer:path', { depth: c.history.length, segment: c.segmentId, holding: c.holding?.id ?? null });
+  }
+
   private step() {
     const now = performance.now();
     const dt = Math.min((now - this.last) / 1000, 0.1);
@@ -162,6 +174,7 @@ export class ExplainerPlayer extends HTMLElement {
       m.currentTime = base + c.holding.loop_from;
     }
     this.paint();
+    this.pathChanged();
   }
 
   private paint() {
@@ -176,13 +189,15 @@ export class ExplainerPlayer extends HTMLElement {
     }
   }
 
-  private act(fn: () => void) { fn(); this.syncMedia(true); }
+  private act(fn: () => void) { fn(); this.syncMedia(true); this.pathChanged(); }
   play() { this.act(() => this.clock.play()); }
   pause() { this.act(() => this.clock.pause()); }
   seek(t: number) { this.act(() => this.clock.seek(t)); }
   setRate(r: number) { this.act(() => this.clock.setRate(r)); }
   jumpTo(id: string) { this.act(() => this.clock.jumpTo(id)); }
   back() { this.act(() => this.clock.back()); }
+  /** Unwind the path to `depth` entries; `atChoice` re-holds the choice taken there (what clicking a path step does). */
+  rewind(depth: number, atChoice = false) { this.act(() => this.clock.rewindTo(depth, atChoice)); }
   choose(option: string) {
     this.act(() => this.clock.choose(option));
     this.emit('explainer:choice', { option });
@@ -197,6 +212,7 @@ export class ExplainerPlayer extends HTMLElement {
       case 'rate': this.setRate(d.rate ?? 1); return this.play(); // setting a rate starts playback
       case 'jump': return this.jumpTo(d.to!);
       case 'back': return this.back();
+      case 'rewind': return this.rewind(d.depth ?? 0, !!d.hold);
       case 'choose': return this.choose(d.option!);
       case 'set': return this.store.set(d.var!, String(d.value ?? ''));
     }

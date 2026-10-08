@@ -1,6 +1,6 @@
 // Pure clock logic: no DOM. Position is {segmentId, t}; t is seconds within the segment.
 export type Option = { id: string; label?: string; goes_to?: string; sets_variable?: string; sets_value?: string };
-export type Segment = { id: string; kind: 'video' | 'audio' | 'none'; src?: string; in?: number; out: number; captions?: string; next?: string | null; ends?: 'continue' | 'stop' };
+export type Segment = { id: string; title?: string; kind: 'video' | 'audio' | 'none'; src?: string; in?: number; out: number; captions?: string; next?: string | null; ends?: 'continue' | 'stop' };
 export type Marker = { id: string; segment: string; t: number; label?: string };
 export type Cue = {
   id: string; segment: string; start: number; end: number; renders: string; variant?: string;
@@ -8,8 +8,8 @@ export type Cue = {
 };
 export type Manifest = { id: string; title?: string; segments: Segment[]; markers?: Marker[]; cues: Cue[] };
 export type Pos = { segmentId: string; t: number };
-/** One step of the path taken: left `segmentId` at `t` and landed in segment `to` at `toT` (`hold`: id of the held choice cue it was chosen from). */
-export type Entry = Pos & { to: string; toT: number; hold?: string };
+/** One step of the path taken: left `segmentId` at `t` and landed in segment `to` at `toT` (`hold`: id of the held choice cue it was chosen from; `option`: the option chosen). */
+export type Entry = Pos & { to: string; toT: number; hold?: string; option?: string };
 export type Hooks = { segment?: (id: string) => void; hold?: (cue: Cue) => void; set?: (name: string, value: string) => void };
 
 export const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -58,13 +58,31 @@ export class Clock {
     this.goto(e, hold);
   }
 
+  /**
+   * Unwind the path to `depth` entries and go to where that stretch began. `atChoice`: instead land on the choice
+   * that was taken at entry `depth` (held, like back()). Out of range is a no-op.
+   */
+  rewindTo(depth: number, atChoice = false) {
+    const h = this.history;
+    if (!Number.isInteger(depth) || depth < 0 || depth > h.length) return;
+    if (atChoice && (depth >= h.length || !h[depth].hold)) return;
+    const popped = h.splice(depth);
+    if (atChoice) {
+      const e = popped[0];
+      this.goto(e, this.manifest.cues.find((c) => c.id === e.hold));
+    } else {
+      const e = h[depth - 1];
+      this.goto(e ? { segmentId: e.to, t: e.toT } : { segmentId: this.manifest.segments[0].id, t: 0 });
+    }
+  }
+
   choose(optionId: string) {
     const here = this.manifest.cues.filter((c) => c.segment === this.segmentId);
     const cues = this.holding ? [this.holding, ...here] : here;
     const opt: Option | undefined = cues.flatMap((c) => c.items ?? []).find((o) => o.id === optionId);
     if (!opt) return;
     if (opt.sets_variable) this.hooks.set?.(opt.sets_variable, opt.sets_value ?? '');
-    if (opt.goes_to) this.branch(opt.goes_to, this.holding?.id);
+    if (opt.goes_to) this.branch(opt.goes_to, this.holding?.id, opt.id);
     this.play();
   }
 
@@ -75,10 +93,10 @@ export class Clock {
   }
 
   /** Take a branch of the path: like jumpTo, but records where it left from. */
-  private branch(id: string, hold?: string) {
+  private branch(id: string, hold?: string, option?: string) {
     const to = this.resolve(id);
     if (!to) return;
-    this.history.push({ segmentId: this.segmentId, t: this.t, to: to.segmentId, toT: to.t, ...(hold ? { hold } : {}) });
+    this.history.push({ segmentId: this.segmentId, t: this.t, to: to.segmentId, toT: to.t, ...(hold ? { hold } : {}), ...(option ? { option } : {}) });
     this.goto(to);
   }
 

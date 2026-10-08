@@ -158,7 +158,7 @@ test('choose records the hold; back() restores the held choice (paused, holding 
   c.play();
   c.tick(11); // held at 10
   c.choose('o1');
-  assert.deepEqual(c.history, [{ segmentId: 'a', t: 10, to: 'b', toT: 0, hold: 'ch' }]);
+  assert.deepEqual(c.history, [{ segmentId: 'a', t: 10, to: 'b', toT: 0, hold: 'ch', option: 'o1' }]);
   c.tick(1);
   c.back();
   assert.deepEqual([c.segmentId, c.t, c.playing, c.holding?.id], ['a', 10, false, 'ch']);
@@ -257,4 +257,38 @@ test('navigating to before the landing point, then reversing to 0: the segment-s
   c.tick(1);
   assert.deepEqual([c.segmentId, c.t], ['a', 10]);
   assert.equal(c.history.length, 0);
+});
+
+test('rewindTo(depth) unwinds to a span start; atChoice lands held on the choice', () => {
+  const mm = m();
+  mm.segments[1].ends = undefined;
+  const c = new Clock(mm);
+  c.play();
+  c.tick(11); // held at a:10
+  c.choose('o1'); // -> b 0 (entry 0, hold)
+  c.tick(5); // b ends, continues to c (entry 1)
+  assert.equal(c.segmentId, 'c');
+  assert.equal(c.history.length, 2);
+  c.rewindTo(1); // span 1 = b, from 0
+  assert.deepEqual([c.segmentId, c.t, c.history.length, c.holding], ['b', 0, 1, null]);
+  c.rewindTo(0, true); // the choice
+  assert.deepEqual([c.segmentId, c.t, c.playing, c.holding?.id, c.history.length], ['a', 10, false, 'ch', 0]);
+  c.choose('o1'); // options work again
+  assert.equal(c.segmentId, 'b');
+  c.rewindTo(0); // span 0 = a, from 0
+  assert.deepEqual([c.segmentId, c.t, c.history.length], ['a', 0, 0]);
+});
+
+test('rewindTo ignores out-of-range depths and a non-choice entry', () => {
+  const c = new Clock(m());
+  c.play();
+  c.tick(11);
+  c.choose('o1');
+  c.tick(5); // continuation entry 1 (no hold)
+  const before = JSON.stringify(c.history);
+  c.rewindTo(5);
+  c.rewindTo(-1);
+  c.rewindTo(1, true); // entry 1 is a continuation
+  c.rewindTo(2, true); // nothing to pop
+  assert.equal(JSON.stringify(c.history), before);
 });

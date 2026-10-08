@@ -15,17 +15,25 @@ Segments of one `src` are `in`/`out` cuts: compile an explainer's media to one f
 Schema: `schema/explainer.schema.json`.
 ```json
 { "id": "", "title": "",
-  "segments": [{ "id": "", "kind": "video|audio|none", "src": "", "in": 0, "out": 12, "captions": "", "next": "segmentOrMarkerId|null", "ends": "continue|stop" }],
+  "segments": [{ "id": "", "title": "", "kind": "video|audio|none", "src": "", "in": 0, "out": 12, "captions": "", "next": "segmentOrMarkerId|null", "ends": "continue|stop" }],
   "markers":  [{ "id": "", "segment": "", "t": 0, "label": "" }],
   "cues":     [{ "id": "", "segment": "", "start": 0, "end": 0, "renders": "<typeRef>@1", "variant": "", "data": {}, "items": [], "hold": false, "loop_from": 0, "when_var": "", "when_value": "" }] }
 ```
 Choice options (`items` of a choice cue): `{id, label, goes_to?, sets_variable?, sets_value?}`. For `kind: none`, `out - in` is the duration.
 
 ## Commands and events
-Public methods: `play pause seek(t) setRate(r) jumpTo(id) back choose(optionId)` (negative rate = reverse). `jumpTo` is navigation and does not touch history; `choose` with `goes_to` is a branch and does.
-Dispatch `explainer:command` with `detail: {action: play|pause|seek|rate|jump|back|choose|set, to?, rate?, t?, option?, var?, value?, target?}` on a player or the document (document: the first player, or those matching `detail.target`; `rate` also starts playback).
+Public methods: `play pause seek(t) setRate(r) jumpTo(id) back choose(optionId) rewind(depth, atChoice?)` (negative rate = reverse). `jumpTo` is navigation and does not touch history; `choose` with `goes_to` is a branch and does.
+Dispatch `explainer:command` with `detail: {action: play|pause|seek|rate|jump|back|rewind|choose|set, to?, rate?, t?, option?, depth?, hold?, var?, value?, target?}` on a player or the document (document: the first player, or those matching `detail.target`; `rate` also starts playback).
 Buttons: `[data-explainer-action="play|pause|seek|rate|jump|back"]` with `data-explainer-to` / `data-explainer-value`, optional `data-explainer-target="selector"`. Scroll sections: `[data-explainer-seek="markerId"]`.
-Emitted (bubbling): `explainer:segment`, `explainer:cueenter`, `explainer:cueexit`, `explainer:choice`.
+Emitted (bubbling): `explainer:segment`, `explainer:cueenter`, `explainer:cueexit`, `explainer:choice`, `explainer:path` (history length, segment or held choice changed; `detail: {depth, segment, holding}`).
+
+## Path view
+`<explainer-path for="playerId" mode="crumbs|tree">` shows the branching path the viewer has taken, rebuilt from the player's history on `explainer:path` (the segment graph loops, so it is never drawn; `pathSteps` in `src/path.ts` unrolls history into spans and choices, with untaken options listed under each choice).
+- `crumbs`: `Intro > Purpose > <> What next? > The four questions ▸ 0:16`. `tree`: the same as a nested list, untaken options greyed.
+- Clicking a past span rewinds to where it began; clicking a choice rewinds to it, held, like `back()` (`player.rewind(depth, atChoice)` / `explainer:command {action:'rewind', depth, hold}`). Untaken options and the current step are not buttons.
+- Labels: the marker label where a branch landed, else the segment `title`, else its id. Times are segment-relative.
+- Themed with `--explainer-ink` (override just here with `--explainer-path-ink`), `--explainer-accent`, `--explainer-font`. Only the "now" time updates per frame.
+- Limits: navigation (markers, scroll) never enters history, so a span that was navigated across segments is labelled by the segment it ended in, and rewinding to the first span always goes to the first segment's start.
 
 ## Play modes
 `<explainer-player play="manual|enter|scrub">` - manual (default): commands only; enter: plays when scrolled into view, rewinds when scrolled back out below; scrub: scroll position maps to `t` over the current segment.

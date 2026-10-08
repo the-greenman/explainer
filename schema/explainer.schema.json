@@ -16,6 +16,7 @@
         "additionalProperties": false,
         "properties": {
           "id": { "type": "string" },
+          "title": { "type": "string", "description": "Label in the path view." },
           "kind": { "enum": ["video", "audio", "none"] },
           "src": { "type": "string" },
           "in": { "type": "number", "minimum": 0, "default": 0 },

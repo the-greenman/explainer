@@ -48,7 +48,7 @@ This file gives project context for agents working in this repo. Read it before 
 - **The capability probes are learning exercises**, not faithful recreations. Record findings rather than polishing.
 
 ## Layout
-- `src/clock.ts` is the pure clock logic (no DOM). `src/player.ts` is the custom element. `src/triggers.ts` holds buttons, scroll sections and the `play="enter|scrub"` modes. `src/store.ts` holds the variables.
+- `src/clock.ts` is the pure clock logic (no DOM). `src/player.ts` is the custom element. `src/triggers.ts` holds buttons, scroll sections and the `play="enter|scrub"` modes. `src/store.ts` holds the variables. `src/path.ts` is the pure path-taken steps (history to spans/choices) and `src/path-view.ts` is `<explainer-path>` (crumbs/tree).
 - `src/components/` holds the core pack (intro, numbered-list, choice) plus `base.ts` (contract and registry) and `canvas.ts`.
 - `schema/explainer.schema.json` is the manifest contract.
 - `demo/` is the gallery.
@@ -73,9 +73,16 @@ This file gives project context for agents working in this repo. Read it before 
 - **Real media:** video is verified with real clips in `examples/video/`: forward, rate, reverse, scrub, segment switch, and hold with `loop_from`. Audio-only segments are not yet tested with a file. Safari, Firefox, phones and R2 delivery are also untested.
 
 ## Next steps
-1. **SRS package (plan step 3).**
+1. **Default path (playthrough).** The explainer plays straight through without asking the questions.
+   - Data: a choice option can be the default (`default: true`). This is a field on `choice-option`, so settle it before the SRS types.
+   - A playthrough mode (a player attribute plus a command) takes the default option at each hold instead of holding. It records it in history like a real choice, so the path view and reverse still work. A choice with no default just continues.
+   - Owner decisions:
+     - In a playthrough the choice overlay is not displayed at all, so it feels like a video.
+     - Defaults that loop back simply loop until stopped. There is no loop guard.
+     - Each loop adds history entries, so the path view grows per lap. This is acceptable unless it proves a problem.
+2. **SRS package (plan step 3).**
    - `srs/` holds the `com.semanticops.explainer` types: segment, marker, component types, choice/choice-option, variable, and the `goes-to` relation type.
    - Add specimen records and a generic `scripts/export.mjs` (srs CLI → manifest), then replace the placeholder `renders` refs.
    - Write only through the srs CLI or MCP and validate after each batch. No CLI or MCP command writes `packageDependencies` yet (srs-rust#1168).
-2. **muDemocracy pilot** in `examples/mudemocracy/`, then the move-over issue.
-3. **Open gaps** are in `docs/findings.md`. Add them when the pilot needs them.
+3. **muDemocracy pilot** in `examples/mudemocracy/`, then the move-over issue.
+4. **Open gaps** are in `docs/findings.md`. Add them when the pilot needs them.

@@ -4,6 +4,7 @@
   "segments": [
     {
       "id": "intro",
+      "title": "Why decisions need recording",
       "kind": "video",
       "src": "../../demo/video/decision-records.mp4",
       "in": 0,
@@ -12,6 +13,7 @@
     },
     {
       "id": "purpose",
+      "title": "Avoiding the same conversation twice",
       "kind": "video",
       "src": "../../demo/video/decision-records.mp4",
       "in": 38.6,

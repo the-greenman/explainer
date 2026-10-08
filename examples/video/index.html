@@ -6,15 +6,24 @@
 <title>Video example: decision records</title>
 <style>
   :root { --explainer-ink: #111; --explainer-accent: #7fd0ff; --explainer-bg: #000; }
-  body { background: #151512; color: #e8e0d0; font: 16px system-ui, sans-serif; max-width: 60rem; margin: 1.5rem auto; padding: 0 1rem; }
+  body { background: #151512; color: #e8e0d0; font: 16px system-ui, sans-serif; max-width: 80rem; margin: 1.5rem auto; padding: 0 1rem; }
   .bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .75rem 0; }
   input[type=range] { flex: 1; min-width: 10rem; }
   button { font: inherit; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 17rem; gap: 1rem; align-items: start; }
+  @media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  aside { border: 1px solid #3a3a33; border-radius: .4rem; padding: .6rem .8rem; }
+  aside h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: #b9b19f; margin: 0 0 .4rem; }
+  explainer-path { --explainer-path-ink: #e8e0d0; }
+  #crumbs { margin-top: .5rem; }
   #readout { font: 13px ui-monospace, monospace; color: #b9b19f; }
 </style>
 </head>
 <body>
+<div class="layout">
+<main>
 <explainer-player id="vid"></explainer-player>
+<explainer-path id="crumbs" for="vid" mode="crumbs"></explainer-path>
 <div class="bar">
   <button data-explainer-action="play">Play</button>
   <button data-explainer-action="pause">Pause</button>
@@ -30,6 +39,9 @@
   <input id="scrub" type="range" min="0" max="38.6" step="0.01" value="0" data-explainer-action="seek" aria-label="Scrub">
 </div>
 <div id="readout"></div>
+</main>
+<aside><h2>Path</h2><explainer-path id="tree" for="vid" mode="tree"></explainer-path></aside>
+</div>
 <script type="module">
   import '../../src/index.ts';
   import './components.ts';

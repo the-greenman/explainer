@@ -2,8 +2,8 @@
   "id": "gallery",
   "title": "Gallery",
   "segments": [
-    { "id": "main", "kind": "none", "out": 12 },
-    { "id": "detour", "kind": "none", "out": 4, "ends": "stop" }
+    { "id": "main", "title": "Main", "kind": "none", "out": 12 },
+    { "id": "detour", "title": "Detour", "kind": "none", "out": 4, "ends": "stop" }
   ],
   "markers": [{ "id": "list", "segment": "main", "t": 5, "label": "The list" }],
   "cues": [
