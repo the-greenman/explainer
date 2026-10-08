@@ -64,7 +64,8 @@
                 "label": { "type": "string" },
                 "goes_to": { "type": "string", "description": "Segment or marker id (choice options)." },
                 "sets_variable": { "type": "string" },
-                "sets_value": { "type": "string" }
+                "sets_value": { "type": "string" },
+                "default": { "type": "boolean", "description": "Taken automatically at the hold in playthrough mode." }
               }
             }
           },

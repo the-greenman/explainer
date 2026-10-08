@@ -45,6 +45,7 @@ This file gives project context for agents working in this repo. Read it before 
 - **One canvas component per family**, with the scene id as cue data, is fine when scenes share layers (equilibrium `wheel-scene`).
 - **One media file per explainer where possible**, with segments as `in`/`out` cuts of it. Separate files still freeze about 300 ms at the boundary; crossing a cut inside one file is seamless (the player skips the re-seek when already at the cut). R2 has no 25 MB per-file limit (that is a Pages/Workers static-asset limit), so the budget is bandwidth: about 2.4 Mbit/s at the current encode, about 90 MB per 5 minutes. A delay after a choice jump (a seek of about 250-320 ms) is accepted.
 - **History is the path taken.** Only default continuation and choices push entries (`{segmentId, t, to, hold?}`); navigation (`jumpTo`: markers, prev/next, scroll sections, the `jump` command) never pushes. Reverse unwinds a branch when it crosses where it landed (else, past the segment start, goes to the default predecessor's end, else stops at 0). `back()` pops and, for a choice, re-shows it held.
+- **Default path (playthrough).** A choice option can be `default: true` (a field on `choice-option`, to settle before the SRS types). With `playthrough` on (player attribute, `playthrough` command, button), a hold takes its default instead of holding and records it in history like a real choice, marked `auto: true` (the path view shows "(default)"). A choice with no default just continues. The choice overlay is not displayed at all in playthrough. Defaults that loop back loop until stopped: no loop guard, history grows per lap.
 - **The capability probes are learning exercises**, not faithful recreations. Record findings rather than polishing.
 
 ## Layout
@@ -73,16 +74,9 @@ This file gives project context for agents working in this repo. Read it before 
 - **Real media:** video is verified with real clips in `examples/video/`: forward, rate, reverse, scrub, segment switch, and hold with `loop_from`. Audio-only segments are not yet tested with a file. Safari, Firefox, phones and R2 delivery are also untested.
 
 ## Next steps
-1. **Default path (playthrough).** The explainer plays straight through without asking the questions.
-   - Data: a choice option can be the default (`default: true`). This is a field on `choice-option`, so settle it before the SRS types.
-   - A playthrough mode (a player attribute plus a command) takes the default option at each hold instead of holding. It records it in history like a real choice, so the path view and reverse still work. A choice with no default just continues.
-   - Owner decisions:
-     - In a playthrough the choice overlay is not displayed at all, so it feels like a video.
-     - Defaults that loop back simply loop until stopped. There is no loop guard.
-     - Each loop adds history entries, so the path view grows per lap. This is acceptable unless it proves a problem.
-2. **SRS package (plan step 3).**
+1. **SRS package (plan step 3).**
    - `srs/` holds the `com.semanticops.explainer` types: segment, marker, component types, choice/choice-option, variable, and the `goes-to` relation type.
    - Add specimen records and a generic `scripts/export.mjs` (srs CLI → manifest), then replace the placeholder `renders` refs.
    - Write only through the srs CLI or MCP and validate after each batch. No CLI or MCP command writes `packageDependencies` yet (srs-rust#1168).
-3. **muDemocracy pilot** in `examples/mudemocracy/`, then the move-over issue.
-4. **Open gaps** are in `docs/findings.md`. Add them when the pilot needs them.
+2. **muDemocracy pilot** in `examples/mudemocracy/`, then the move-over issue.
+3. **Open gaps** are in `docs/findings.md`. Add them when the pilot needs them.

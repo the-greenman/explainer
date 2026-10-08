@@ -19,13 +19,23 @@ Schema: `schema/explainer.schema.json`.
   "markers":  [{ "id": "", "segment": "", "t": 0, "label": "" }],
   "cues":     [{ "id": "", "segment": "", "start": 0, "end": 0, "renders": "<typeRef>@1", "variant": "", "data": {}, "items": [], "hold": false, "loop_from": 0, "when_var": "", "when_value": "" }] }
 ```
-Choice options (`items` of a choice cue): `{id, label, goes_to?, sets_variable?, sets_value?}`. For `kind: none`, `out - in` is the duration.
+Choice options (`items` of a choice cue): `{id, label, goes_to?, sets_variable?, sets_value?, default?}`. For `kind: none`, `out - in` is the duration.
 
 ## Commands and events
 Public methods: `play pause seek(t) setRate(r) jumpTo(id) back choose(optionId) rewind(depth, atChoice?)` (negative rate = reverse). `jumpTo` is navigation and does not touch history; `choose` with `goes_to` is a branch and does.
-Dispatch `explainer:command` with `detail: {action: play|pause|seek|rate|jump|back|rewind|choose|set, to?, rate?, t?, option?, depth?, hold?, var?, value?, target?}` on a player or the document (document: the first player, or those matching `detail.target`; `rate` also starts playback).
-Buttons: `[data-explainer-action="play|pause|seek|rate|jump|back"]` with `data-explainer-to` / `data-explainer-value`, optional `data-explainer-target="selector"`. Scroll sections: `[data-explainer-seek="markerId"]`.
+Dispatch `explainer:command` with `detail: {action: play|pause|seek|rate|jump|back|rewind|choose|playthrough|set, to?, rate?, t?, option?, depth?, hold?, on?, var?, value?, target?}` on a player or the document (document: the first player, or those matching `detail.target`; `rate` also starts playback).
+Buttons: `[data-explainer-action="play|pause|seek|rate|jump|back|playthrough"]` with `data-explainer-to` / `data-explainer-value`, optional `data-explainer-target="selector"`. Scroll sections: `[data-explainer-seek="markerId"]`.
 Emitted (bubbling): `explainer:segment`, `explainer:cueenter`, `explainer:cueexit`, `explainer:choice`, `explainer:path` (history length, segment or held choice changed; `detail: {depth, segment, holding}`).
+
+## Playthrough (default path)
+Mark one option of a choice cue `default: true` and an explainer can play straight through like a video.
+- Switch on with the boolean `playthrough` attribute on `<explainer-player>` (observed, so it can change live; also the `playthrough` property), the command `{action: 'playthrough', on?: boolean}` (no `on` toggles), or a button `data-explainer-action="playthrough"` with optional `data-explainer-value="on|off"` (otherwise it toggles).
+- At a hold the clock takes the default option instead of holding: `sets_variable` applies, `goes_to` branches, playback keeps going. The history entry is the same as for a real choice (`hold`, `option`) plus `auto: true`; the path view tree shows "(default)" after it. A choice with no default just continues past.
+- The choice overlay is not displayed at all in playthrough and keys 1-n do nothing.
+- Turning it on while holding takes the default at once and plays. Turning it off: later holds hold as normal.
+- `back()` / `rewind(depth, true)` pop the entry and go to the choice point without showing the choice; playing on from there takes the default again (if playing, straight away). Reverse unwinds an auto branch like a chosen one.
+- A default that loops back (e.g. "Watch again" to the start) loops until stopped; there is no loop guard and history grows per lap.
+- The player re-seeks the media after every default branch (clock hook `jump`), including same-segment ones.
 
 ## Path view
 `<explainer-path for="playerId" mode="crumbs|tree">` shows the branching path the viewer has taken, rebuilt from the player's history on `explainer:path` (the segment graph loops, so it is never drawn; `pathSteps` in `src/path.ts` unrolls history into spans and choices, with untaken options listed under each choice).

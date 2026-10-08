@@ -35,6 +35,7 @@
   <button data-explainer-action="rate" data-explainer-value="1.5">1.5x</button>
   <button data-explainer-action="rate" data-explainer-value="2">2x</button>
   <button data-explainer-action="rate" data-explainer-value="-1">Reverse</button>
+  <button id="pt" data-explainer-action="playthrough" aria-pressed="false">Playthrough: off</button>
   <button id="cc" aria-pressed="true">Captions: on</button>
   <input id="scrub" type="range" min="0" max="38.6" step="0.01" value="0" data-explainer-action="seek" aria-label="Scrub">
 </div>
@@ -70,9 +71,12 @@
     if (e.key === 'ArrowLeft') document.getElementById('prev').click();
     if (e.key === ' ') { e.preventDefault(); p.clock.playing ? p.pause() : p.play(); }
   });
+  const ptBtn = document.getElementById('pt');
   const s = document.getElementById('scrub'), ro = document.getElementById('readout');
   const tick = () => {
     const c = p.clock, v = p.querySelector('video');
+    const on = p.playthrough;
+    if (ptBtn.getAttribute('aria-pressed') !== String(on)) { ptBtn.textContent = `Playthrough: ${on ? 'on' : 'off'}`; ptBtn.setAttribute('aria-pressed', on); }
     if (c) {
       s.max = c.length; if (document.activeElement !== s) s.value = c.t;
       ro.textContent = `segment ${c.segmentId} | clock t ${c.t.toFixed(2)} | video.currentTime ${v ? v.currentTime.toFixed(2) : '-'} | rate ${c.rate}${c.holding ? ' | HOLD' : ''}${c.playing ? '' : ' | paused'}`;

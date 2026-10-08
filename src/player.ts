@@ -4,7 +4,7 @@ import { gate, scopeFor, type Store } from './store.ts';
 import { bindPlayMode } from './triggers.ts';
 
 type Entry = { cue: Cue; comp: Component; node: Element; wrap: HTMLElement; data: Record<string, any>; shown: boolean };
-export type Command = { action: string; to?: string; rate?: number; t?: number; option?: string; depth?: number; hold?: boolean; var?: string; value?: string };
+export type Command = { action: string; to?: string; rate?: number; t?: number; option?: string; depth?: number; hold?: boolean; on?: boolean; var?: string; value?: string };
 
 export class ExplainerPlayer extends HTMLElement {
   clock!: Clock;
@@ -28,6 +28,18 @@ export class ExplainerPlayer extends HTMLElement {
     const src = this.getAttribute('src');
     if (src && !this.pending) this.pending = await (await fetch(src)).json();
     if (this.pending && this.isConnected) this.init(this.pending);
+  }
+
+  static observedAttributes = ['playthrough'];
+  attributeChangedCallback() { if (this.clock) this.applyPlaythrough(this.hasAttribute('playthrough')); }
+  get playthrough() { return this.hasAttribute('playthrough'); }
+  set playthrough(on: boolean) { this.toggleAttribute('playthrough', !!on); }
+
+  /** The attribute is the source of truth; taking a default at a hold moves the clock, so media is re-synced. */
+  private applyPlaythrough(on: boolean) {
+    const held = !!this.clock.holding;
+    this.clock.setPlaythrough(on);
+    if (held && on) { this.syncMedia(true); this.pathChanged(); }
   }
 
   disconnectedCallback() { this.teardown(); }
@@ -57,7 +69,10 @@ export class ExplainerPlayer extends HTMLElement {
       segment: (id) => { this.loadSegment(); this.emit('explainer:segment', { id }); },
       hold: () => this.syncMedia(true),
       set: (k, v) => this.store.set(k, v),
+      // a playthrough branch happens inside advance(), possibly in the same segment or file: the media must follow
+      jump: () => { this.syncMedia(true); this.pathChanged(); },
     });
+    this.clock.playthrough = this.hasAttribute('playthrough');
     // each cue's component is mounted once; fails loudly on an unregistered type
     this.entries = m.cues.map((cue) => {
       const comp = lookup(cue.renders);
@@ -76,7 +91,7 @@ export class ExplainerPlayer extends HTMLElement {
     const onCmd = (e: Event) => this.command((e as CustomEvent<Command>).detail);
     this.addEventListener('explainer:command', onCmd);
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as Element).closest?.('input,textarea,select') || !this.clock.holding) return;
+      if ((e.target as Element).closest?.('input,textarea,select') || !this.clock.holding || this.clock.playthrough) return;
       const o = this.clock.holding.items?.[Number(e.key) - 1];
       if (o) this.choose(o.id);
     };
@@ -182,7 +197,7 @@ export class ExplainerPlayer extends HTMLElement {
     const vars = this.store.all();
     for (const e of this.entries) {
       const c = e.cue;
-      const show = c.segment === segmentId && t >= c.start && t <= c.end && gate(c, vars);
+      const show = !(c.hold && this.clock.playthrough) && c.segment === segmentId && t >= c.start && t <= c.end && gate(c, vars);
       e.wrap.hidden = !show; // before render, so a cue measures its real size on its first frame
       if (show) e.comp.render(e.node as HTMLElement, this.reduced ? 1 : cueProgress(c, t), e.data, vars, c.items ?? [], c.end - c.start);
       if (show !== e.shown) { e.shown = show; this.emit(show ? 'explainer:cueenter' : 'explainer:cueexit', { cue: c.id }); }
@@ -214,6 +229,7 @@ export class ExplainerPlayer extends HTMLElement {
       case 'back': return this.back();
       case 'rewind': return this.rewind(d.depth ?? 0, !!d.hold);
       case 'choose': return this.choose(d.option!);
+      case 'playthrough': this.playthrough = d.on ?? !this.playthrough; return;
       case 'set': return this.store.set(d.var!, String(d.value ?? ''));
     }
   }

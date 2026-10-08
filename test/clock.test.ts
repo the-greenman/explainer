@@ -292,3 +292,127 @@ test('rewindTo ignores out-of-range depths and a non-choice entry', () => {
   c.rewindTo(2, true); // nothing to pop
   assert.equal(JSON.stringify(c.history), before);
 });
+
+// ---- playthrough: holds take their default option ----
+const pm = (def?: string): Manifest => ({
+  id: 'p',
+  segments: [{ id: 'a', kind: 'none', out: 10 }, { id: 'b', kind: 'none', out: 5, ends: 'stop' }],
+  markers: [{ id: 'mid', segment: 'a', t: 3 }],
+  cues: [{
+    id: 'ch', segment: 'a', start: 8, end: 9, renders: 'x', hold: true,
+    items: [
+      { id: 'again', goes_to: 'a', ...(def === 'again' ? { default: true } : {}) },
+      { id: 'mid', goes_to: 'mid', sets_variable: 'v', sets_value: '1', ...(def === 'mid' ? { default: true } : {}) },
+      { id: 'tob', goes_to: 'b', ...(def === 'tob' ? { default: true } : {}) },
+    ],
+  }],
+});
+const pt = (def?: string) => { const c = new Clock(pm(def)); c.playthrough = true; c.play(); return c; };
+
+test('playthrough takes the default at the hold; history records hold, option and auto', () => {
+  const c = pt('tob');
+  c.tick(9.5);
+  assert.deepEqual([c.segmentId, c.t, c.playing, c.holding], ['b', 0, true, null]);
+  assert.deepEqual(c.history, [{ segmentId: 'a', t: 9, to: 'b', toT: 0, hold: 'ch', option: 'tob', auto: true }]);
+});
+
+test('playthrough with no default continues past the hold without holding', () => {
+  const c = pt();
+  let held = false;
+  c.hooks.hold = () => (held = true);
+  c.tick(9.5);
+  assert.deepEqual([c.segmentId, c.t, c.playing, held, c.holding], ['a', 9.5, true, false, null]);
+  c.tick(1); // end of a: default continuation to b
+  assert.equal(c.segmentId, 'b');
+  assert.equal(c.history.length, 1);
+  assert.equal(c.history[0].auto, undefined);
+  c.tick(10); // b ends (stop)
+  assert.deepEqual([c.segmentId, c.playing], ['b', false]);
+});
+
+test('playthrough default applies sets_variable via the set hook', () => {
+  const c = pt('mid');
+  const vars: Record<string, string> = {};
+  c.hooks.set = (k, v) => (vars[k] = v);
+  c.tick(9.5);
+  assert.deepEqual(vars, { v: '1' });
+  assert.deepEqual([c.segmentId, c.t], ['a', 3]);
+});
+
+test('a looping default keeps playing and history grows per lap', () => {
+  const c = pt('again');
+  for (let i = 0; i < 30; i++) c.tick(1);
+  assert.equal(c.playing, true);
+  assert.equal(c.holding, null);
+  assert.ok(c.history.length >= 3, `laps: ${c.history.length}`);
+  assert.ok(c.history.every((e) => e.auto && e.hold === 'ch' && e.option === 'again'));
+});
+
+test('reverse unwinds an auto branch like a chosen one, and keeps reversing', () => {
+  const c = pt('mid');
+  c.tick(9.5); // auto to a@3
+  c.tick(1); // a@4
+  c.setRate(-1);
+  c.tick(2); // crosses 3: unwinds to the choice point (a@9)
+  assert.deepEqual([c.segmentId, c.t, c.history.length, c.holding], ['a', 9, 0, null]);
+  assert.equal(c.playing, true);
+  c.tick(1); // keeps reversing
+  assert.equal(c.t, 8);
+});
+
+test('toggling on while holding takes the default and plays', () => {
+  const c = new Clock(pm('tob'));
+  c.play();
+  c.tick(9.5);
+  assert.equal(c.holding?.id, 'ch');
+  c.setPlaythrough(true);
+  assert.deepEqual([c.segmentId, c.playing, c.holding], ['b', true, null]);
+  assert.equal(c.history[0].auto, true);
+});
+
+test('toggling off: the next hold holds', () => {
+  const c = pt('again');
+  c.tick(9.5); // auto to a@0
+  assert.equal(c.history.length, 1);
+  c.setPlaythrough(false);
+  c.tick(9.5);
+  assert.deepEqual([c.t, c.playing, c.holding?.id, c.history.length], [9, false, 'ch', 1]);
+});
+
+test('back() in playthrough goes to the choice point unshown; playing on takes the default again', () => {
+  const c = pt('again');
+  c.tick(9.5);
+  c.back();
+  assert.deepEqual([c.segmentId, c.t, c.holding, c.history.length, c.playing], ['a', 9, null, 0, true]);
+  c.tick(0.1); // continuing from exactly the hold's end
+  assert.deepEqual([c.t, c.history.length], [0, 1]);
+  assert.equal(c.history[0].auto, true);
+});
+
+test('rewindTo(atChoice) in playthrough: same, and a paused clock stays paused until played', () => {
+  const c = pt('again');
+  c.tick(9.5);
+  c.pause();
+  c.rewindTo(0, true);
+  assert.deepEqual([c.t, c.holding, c.playing], [9, null, false]);
+  c.play();
+  c.tick(0.1);
+  assert.equal(c.history.length, 1);
+});
+
+test('jump hook fires for same-segment and cross-segment auto branches, not for chosen ones', () => {
+  for (const [def, seg] of [['mid', 'a'], ['tob', 'b']] as const) {
+    const c = pt(def);
+    let n = 0;
+    c.hooks.jump = () => n++;
+    c.tick(9.5);
+    assert.deepEqual([n, c.segmentId], [1, seg]);
+  }
+  const c = new Clock(pm('mid'));
+  let n = 0;
+  c.hooks.jump = () => n++;
+  c.play();
+  c.tick(9.5);
+  c.choose('mid');
+  assert.equal(n, 0);
+});

@@ -130,3 +130,22 @@ test('navigation across segments (no history pushed): the span is labelled by th
   c.tick(0);
   assert.deepEqual(brief(c), ['b 0:00-0:00']);
 });
+
+test('an auto-taken option is a choice step with taken and auto', () => {
+  const mm = m();
+  mm.cues[0].items![1].default = true;
+  const c = new Clock(mm);
+  c.playthrough = true;
+  c.play();
+  c.tick(25);
+  c.tick(1);
+  const s = steps(c);
+  const ch = s[1];
+  assert.equal(ch.kind, 'choice');
+  assert.deepEqual(ch.kind === 'choice' && ch.options, [
+    { id: 'o1', label: 'Again', taken: false },
+    { id: 'o2', label: 'Middle', taken: true, auto: true },
+    { id: 'o3', label: 'o3', taken: false },
+  ]);
+  assert.equal(s[2].kind === 'span' && s[2].label, 'Midpoint');
+});

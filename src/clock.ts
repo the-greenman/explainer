@@ -1,5 +1,5 @@
 // Pure clock logic: no DOM. Position is {segmentId, t}; t is seconds within the segment.
-export type Option = { id: string; label?: string; goes_to?: string; sets_variable?: string; sets_value?: string };
+export type Option = { id: string; label?: string; goes_to?: string; sets_variable?: string; sets_value?: string; default?: boolean };
 export type Segment = { id: string; title?: string; kind: 'video' | 'audio' | 'none'; src?: string; in?: number; out: number; captions?: string; next?: string | null; ends?: 'continue' | 'stop' };
 export type Marker = { id: string; segment: string; t: number; label?: string };
 export type Cue = {
@@ -8,9 +8,11 @@ export type Cue = {
 };
 export type Manifest = { id: string; title?: string; segments: Segment[]; markers?: Marker[]; cues: Cue[] };
 export type Pos = { segmentId: string; t: number };
-/** One step of the path taken: left `segmentId` at `t` and landed in segment `to` at `toT` (`hold`: id of the held choice cue it was chosen from; `option`: the option chosen). */
-export type Entry = Pos & { to: string; toT: number; hold?: string; option?: string };
-export type Hooks = { segment?: (id: string) => void; hold?: (cue: Cue) => void; set?: (name: string, value: string) => void };
+/** One step of the path taken: left `segmentId` at `t` and landed in segment `to` at `toT` (`hold`: id of the held choice cue it was chosen from; `option`: the option chosen; `auto`: taken by playthrough, not chosen). */
+export type Entry = Pos & { to: string; toT: number; hold?: string; option?: string; auto?: true };
+export type Hooks = { segment?: (id: string) => void; hold?: (cue: Cue) => void; set?: (name: string, value: string) => void;
+  /** the clock jumped by itself (a playthrough default branch): media must be re-synced with a seek */
+  jump?: () => void };
 
 export const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 export const cueProgress = (cue: { start: number; end: number }, t: number) => clamp01((t - cue.start) / (cue.end - cue.start));
@@ -24,6 +26,8 @@ export class Clock {
   playing = false;
   history: Entry[] = [];
   holding: Cue | null = null;
+  /** play through like a video: a hold takes its `default` option instead of holding (no default: it just continues) */
+  playthrough = false;
   manifest: Manifest;
   hooks: Hooks;
 
@@ -44,6 +48,18 @@ export class Clock {
   /** media drives the clock */
   setTime(t: number) { this.advance(t); }
 
+  /** Turning it on while holding takes the default at once and plays; turning it off only changes later holds. */
+  setPlaythrough(on: boolean) {
+    if (this.playthrough === on) return;
+    this.playthrough = on;
+    const h = this.holding;
+    if (on && h) {
+      this.holding = null;
+      this.takeDefault(h);
+      this.playing = true;
+    }
+  }
+
   /** Navigation (markers, prev/next, scroll sections): moves, never touches history. */
   jumpTo(id: string) {
     const to = this.resolve(id);
@@ -55,7 +71,7 @@ export class Clock {
     const e = this.history.pop();
     if (!e) return;
     const hold = e.hold ? this.manifest.cues.find((c) => c.id === e.hold) : undefined;
-    this.goto(e, hold);
+    this.goto(e, this.playthrough ? undefined : hold); // playthrough: to the choice point, not shown; playing on takes the default again
   }
 
   /**
@@ -69,7 +85,7 @@ export class Clock {
     const popped = h.splice(depth);
     if (atChoice) {
       const e = popped[0];
-      this.goto(e, this.manifest.cues.find((c) => c.id === e.hold));
+      this.goto(e, this.playthrough ? undefined : this.manifest.cues.find((c) => c.id === e.hold));
     } else {
       const e = h[depth - 1];
       this.goto(e ? { segmentId: e.to, t: e.toT } : { segmentId: this.manifest.segments[0].id, t: 0 });
@@ -93,11 +109,20 @@ export class Clock {
   }
 
   /** Take a branch of the path: like jumpTo, but records where it left from. */
-  private branch(id: string, hold?: string, option?: string) {
+  private branch(id: string, hold?: string, option?: string, auto = false) {
     const to = this.resolve(id);
-    if (!to) return;
-    this.history.push({ segmentId: this.segmentId, t: this.t, to: to.segmentId, toT: to.t, ...(hold ? { hold } : {}), ...(option ? { option } : {}) });
+    if (!to) return false;
+    this.history.push({ segmentId: this.segmentId, t: this.t, to: to.segmentId, toT: to.t, ...(hold ? { hold } : {}), ...(option ? { option } : {}), ...(auto ? { auto: true as const } : {}) });
     this.goto(to);
+    return true;
+  }
+
+  /** Playthrough at a hold (t is at its end): apply the default option like a real choice. True if it branched. */
+  private takeDefault(hold: Cue) {
+    const opt: Option | undefined = hold.items?.find((o) => o.default);
+    if (!opt) return false;
+    if (opt.sets_variable) this.hooks.set?.(opt.sets_variable, opt.sets_value ?? '');
+    return !!opt.goes_to && this.branch(opt.goes_to, hold.id, opt.id, true);
   }
 
   /** `hold`: restore that choice cue as held (paused, choice showing). */
@@ -126,15 +151,20 @@ export class Clock {
     // reversing across where the top branch landed unwinds it (any t): back to where it was taken from
     if (nt < old && top && top.to === this.segmentId && old >= top.toT && top.toT > nt) return this.goto(this.history.pop()!);
     if (nt > old) {
-      const hold = this.manifest.cues
-        .filter((c) => c.segment === this.segmentId && c.hold && c.end > old && c.end <= nt)
-        .sort((a, b) => a.end - b.end)[0];
-      if (hold) {
+      const pt = this.playthrough;
+      // playthrough also counts a hold we stand exactly at the end of (after back() to the choice point)
+      const holds = this.manifest.cues
+        .filter((c) => c.segment === this.segmentId && c.hold && (c.end > old || (pt && c.end === old)) && c.end <= nt)
+        .sort((a, b) => a.end - b.end);
+      for (const hold of holds) {
         this.t = hold.end;
-        this.playing = false;
-        this.holding = hold;
-        this.hooks.hold?.(hold);
-        return;
+        if (!pt) {
+          this.playing = false;
+          this.holding = hold;
+          this.hooks.hold?.(hold);
+          return;
+        }
+        if (this.takeDefault(hold)) { this.hooks.jump?.(); return; }
       }
       if (nt >= this.length) return this.finishSegment();
     } else if (nt < 0) {

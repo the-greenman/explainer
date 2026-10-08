@@ -46,3 +46,12 @@ Caveats: other rows were re-run on the one-file encode with the same results (1x
 
 ## Screenshots
 `shot-intro-3s.png`, `shot-intro-23s.png`, `shot-purpose-8s.png`, `shot-purpose-44s.png`, `shot-choice-hold.png`, `shot-gated-record.png` (written by `check.mjs`, 960x540 stage). The held choice dims and covers the whole frame including the face (scrim, centred prompt); the other overlays stay in the side columns.
+
+## Playthrough (default path)
+"Watch again" is `default: true`, so with playthrough on the explainer plays through and loops until stopped. The page has a "Playthrough: on/off" button (`data-explainer-action="playthrough"`). `node examples/video/check.mjs` section `h` measures it (headless Chromium, 2x from purpose 45, rAF-sampled):
+- Hold passed without stopping: choice wrapper hidden on all 291 frames, 0 frames with a hold, clock reached 48.575 then the entry `{purpose 48.6 -> intro 0, hold: next, option: again, auto: true}`; landed intro 0.000, playing, video-clock diff 0.000; from 0.5 s on, `|currentTime - (in + t)|` max 0.001 over 83 frames, still playing at the end.
+- Pitfall (same-segment default, "skip" made default: purpose 48.6 -> 20.4): media followed, diff 0.000 at the first frame after the jump and max 0.000 from 0.5 s on (83 frames). Without a `jump` hook the media would stay at 48.6 and the clock would read it back; the clock now fires `hooks.jump` on every auto branch and the player seeks.
+- Toggle off before the hold (button click): holds at 48.600, not playing, wrapper visible, 3 option buttons, history 0. Toggle on while holding (button): intro, playing, video diff 0.035 0.7 s later, entry `auto`.
+- Reverse after the same-segment auto branch: unwinds at 48.599 (history 0), still playing at rate -1 and at 48.000 0.6 s later (video diff 0.000).
+- Path tree text shows "Jump to the decision record (default)" (and "Watch again (default)" for the loop).
+- Not verified: the loop over many laps in a browser (clock unit test only), `back()` in playthrough in a browser (unit tests only), a cross-segment default over a network, no `explainer:choice` event is emitted for auto branches (the `explainer:path` event still fires).

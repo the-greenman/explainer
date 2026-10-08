@@ -2,7 +2,7 @@
 // spans and choices are listed in the order they were watched.
 import type { Cue, Entry, Manifest, Pos } from './clock.ts';
 
-export type PathOption = { id: string; label: string; taken: boolean };
+export type PathOption = { id: string; label: string; taken: boolean; auto?: true };
 export type SpanStep = { kind: 'span'; segment: string; from: number; to: number; label: string; depth: number; current: boolean };
 export type ChoiceStep = { kind: 'choice'; cue: string; label: string; depth: number; options: PathOption[]; current: boolean };
 export type PathStep = SpanStep | ChoiceStep;
@@ -35,7 +35,7 @@ export function pathSteps(manifest: Manifest, history: Entry[], pos: Pos, holdin
     steps.push({ kind: 'span', segment: seg, from, to: e.t, label: spanLabel(seg, from, branched), depth: i, current: false });
     if (e.hold) {
       const cue = manifest.cues.find((c) => c.id === e.hold);
-      steps.push({ kind: 'choice', cue: e.hold, label: choiceLabel(cue, e.hold), depth: i, options: optionsOf(cue, e.option), current: false });
+      steps.push({ kind: 'choice', cue: e.hold, label: choiceLabel(cue, e.hold), depth: i, options: optionsOf(cue, e.option, e.auto), current: false });
     }
     seg = e.to;
     from = e.toT;
@@ -50,5 +50,5 @@ export function pathSteps(manifest: Manifest, history: Entry[], pos: Pos, holdin
 }
 
 const choiceLabel = (cue: Cue | undefined, fallback: string) => (typeof cue?.data?.prompt === 'string' && cue.data.prompt) || fallback;
-const optionsOf = (cue: Cue | undefined, taken?: string): PathOption[] =>
-  (cue?.items ?? []).map((o) => ({ id: o.id, label: o.label ?? o.id, taken: o.id === taken }));
+const optionsOf = (cue: Cue | undefined, taken?: string, auto?: boolean): PathOption[] =>
+  (cue?.items ?? []).map((o) => ({ id: o.id, label: o.label ?? o.id, taken: o.id === taken, ...(auto && o.id === taken ? { auto: true as const } : {}) }));

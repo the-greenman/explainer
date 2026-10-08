@@ -8,7 +8,7 @@ const target = (sel?: string | null) =>
 
 function run(el: HTMLElement) {
   const v = el.dataset.explainerValue ?? (el as HTMLInputElement).value;
-  const cmd: Command = { action: el.dataset.explainerAction!, to: el.dataset.explainerTo, rate: +v, t: +v };
+  const cmd: Command = { action: el.dataset.explainerAction!, to: el.dataset.explainerTo, rate: +v, t: +v, on: v === 'on' ? true : v === 'off' ? false : undefined };
   target(el.dataset.explainerTarget).forEach((p) => p.command(cmd));
 }
 

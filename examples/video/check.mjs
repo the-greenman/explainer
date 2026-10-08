@@ -354,6 +354,84 @@ async function toHold(page, from = 45.5) {
   await done(page);
 }
 
+/* ---------- h. playthrough (default path) ---------- */
+const PT_SHOTS = process.env.PT_SHOTS ?? SHOTS;
+async function ptRun(page, { landing, def, shot } = {}) {
+  await page.evaluate((def) => {
+    const p = window.__p, its = p.clock.manifest.cues.find((c) => c.id === 'next').items;
+    if (def) its.forEach((o) => (o.default = o.id === def));
+    p.jumpTo('purpose'); p.seek(45);
+    p.playthrough = true;
+    const w = p.entries.find((e) => e.cue.id === 'next').wrap;
+    window.__pt = []; window.__ptStop = false;
+    const f = () => { const c = p.clock, v = p.querySelector('video'), s = c.segment;
+      window.__pt.push({ w: performance.now(), seg: c.segmentId, t: c.t, ct: v.currentTime, d: v.currentTime - ((s.in ?? 0) + c.t), hid: w.hidden, playing: c.playing, hold: c.holding?.id ?? null, hist: c.history.length });
+      if (!window.__ptStop) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  }, def);
+  await sleep(900);
+  await page.evaluate(() => window.__p.command({ action: 'rate', rate: 2 }));
+  await waitFor(page, () => window.__p.clock.history.length >= 1, undefined, 15000);
+  const jw = await page.evaluate(() => performance.now());
+  await sleep(300);
+  if (shot) { await page.screenshot({ path: `${PT_SHOTS}/${shot}` }); console.log('screenshot', `${PT_SHOTS}/${shot}`); }
+  await sleep(1500);
+  const log = await page.evaluate(() => window.__pt.slice());
+  const hist = await page.evaluate(() => JSON.parse(JSON.stringify(window.__p.clock.history)));
+  const j = log.findIndex((x) => x.hist >= 1);
+  const pre = log.slice(0, j), post = log.slice(j), late = post.filter((x) => x.w >= jw + 500 - 300);
+  const pasts = pre.filter((x) => x.seg === 'purpose' && x.t >= 48.3);
+  return { log, hist, j, pre, post, jw, hiddenAll: log.every((x) => x.hid), holdFrames: log.filter((x) => x.hold).length, minPre: Math.max(...pre.map((x) => x.t)), stallMs: Math.max(...pre.slice(-30).map((x, i, a) => (i ? x.w - a[i - 1].w : 0))),
+    first: post[0], d0: Math.abs(post[0].d), dLate: Math.max(...post.filter((x) => x.w >= post[0].w + 500).map((x) => Math.abs(x.d))), dLateN: post.filter((x) => x.w >= post[0].w + 500).length, still: post.at(-1), pasts: pasts.length };
+}
+const ptRow = (id, what, x, land) => {
+  row(id, `${what}: choice wrapper hidden on every rAF frame (${x.log.length} samples) / frames with a hold`, `${x.hiddenAll} / ${x.holdFrames}`);
+  row(id, 'clock t reached before the jump (hold at 48.6) / history entry', `${r(x.minPre)} / ${JSON.stringify(x.hist[0])}`);
+  row(id, 'landing seg@t at first frame after the jump / playing / video-clock diff at that frame', `${x.first.seg}@${r(x.first.t)} / ${x.first.playing} / ${r(x.d0)}`, `want ${land}`);
+  row(id, '|currentTime - (in + t)| from 0.5 s after the jump: max over n frames / still playing at end (t, hist)', `${r(x.dLate)} (n=${x.dLateN}) / ${x.still.playing} (${r(x.still.t)}, ${x.still.hist})`, 'want < 0.1');
+};
+{ // a. default "Watch again" (cross-segment, same file), 2x
+  const page = await fresh();
+  const x = await ptRun(page, { shot: 'playthrough-a-after-jump.png' });
+  ptRow('h a playthrough', 'default again (purpose to intro 0), 2x', x, 'intro@0');
+  row('h a playthrough', 'path tree text', (await page.evaluate(() => document.getElementById('tree').textContent)).replace(/\s+/g, ' '));
+  await done(page);
+}
+{ // b. same-segment default: record, purpose 48.6 -> 20.4 (the pitfall), then e. reverse after it
+  const page = await fresh();
+  const x = await ptRun(page, { def: 'skip', shot: 'playthrough-b-same-segment.png' });
+  ptRow('h b same-segment', 'default skip (purpose 48.6 to 20.4), 2x', x, 'purpose@20.4');
+  const tree = (await page.evaluate(() => document.getElementById('tree').textContent)).replace(/\s+/g, ' ');
+  row('h f path view', 'tree text has "(default)" on the auto-taken option', `${tree.includes('(default)')} : ${tree}`);
+  await page.evaluate(() => window.__p.command({ action: 'rate', rate: -1 }));
+  await waitFor(page, () => window.__p.clock.history.length === 0, undefined, 10000);
+  const at = await page.evaluate(() => { const c = window.__p.clock; return { seg: c.segmentId, t: c.t, playing: c.playing, hold: c.holding?.id ?? null, rate: c.rate }; });
+  await sleep(600);
+  const later = await page.evaluate(() => { const c = window.__p.clock, v = window.__p.querySelector('video'); return { t: c.t, d: v.currentTime - c.t - (c.segment.in ?? 0), vis: window.__p.entries.find((e) => e.cue.id === 'next').wrap.hidden }; });
+  row('h e reverse', 'after an auto branch, reverse: unwound at (seg@t, playing, holding, rate) / 0.6 s later t, video diff', `${at.seg}@${r(at.t)} ${at.playing} ${at.hold} ${at.rate} / ${r(later.t)}, ${r(later.d)}`, 'want purpose ~48.6 then falling');
+  await done(page);
+}
+{ // c. toggle off before the hold
+  const page = await fresh();
+  await page.evaluate(() => { const p = window.__p; p.jumpTo('purpose'); p.seek(45); p.playthrough = true; });
+  await sleep(800);
+  await page.evaluate(() => window.__p.command({ action: 'rate', rate: 2 }));
+  await waitFor(page, () => window.__p.clock.t >= 46, undefined, 10000);
+  await page.click('#pt'); // the button toggles
+  const attr = await page.evaluate(() => window.__p.hasAttribute('playthrough'));
+  await waitFor(page, () => window.__p.clock.holding != null, undefined, 10000);
+  await sleep(500);
+  const s = await page.evaluate(() => { const c = window.__p.clock; return { t: c.t, playing: c.playing, hold: c.holding?.id, hid: window.__p.entries.find((e) => e.cue.id === 'next').wrap.hidden, btns: window.__p.querySelectorAll('button').length, hist: c.history.length, label: document.getElementById('pt').textContent }; });
+  row('h c toggle off', 'button click turned it off (attribute present after) / holds at / playing / wrapper hidden / option buttons / history / label', `${attr} / ${r(s.t)} / ${s.playing} / ${s.hid} / ${s.btns} / ${s.hist} / ${s.label}`, 'want false / 48.600 / false / false / 3 / 0');
+  // d. toggle on while holding (same page)
+  await page.click('#pt');
+  await waitFor(page, () => window.__p.clock.history.length === 1, undefined, 5000);
+  await sleep(700);
+  const d = await page.evaluate(() => { const c = window.__p.clock, v = window.__p.querySelector('video'); return { seg: c.segmentId, t: c.t, playing: c.playing, hold: c.holding?.id ?? null, diff: v.currentTime - c.t - (c.segment.in ?? 0), auto: c.history[0].auto, label: document.getElementById('pt').textContent }; });
+  row('h d toggle on', 'while holding: seg@t 0.7 s later / playing / holding / video diff / entry auto / label', `${d.seg}@${r(d.t)} / ${d.playing} / ${d.hold} / ${r(d.diff)} / ${d.auto} / ${d.label}`, 'want intro@~0.7, playing, diff < 0.1');
+  await done(page);
+}
+
 /* ---------- g. errors ---------- */
 {
   const page = await fresh();

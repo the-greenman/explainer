@@ -146,7 +146,7 @@ export class ExplainerPath extends HTMLElement {
       const next = steps[i + 1];
       for (const o of (s as ChoiceStep).options) {
         const ol = this.el('li', `padding:.1em 0 .1em .5em${o.taken ? '' : ';' + dim}`);
-        ol.append(o.taken ? '● ' : '○ ', o.label);
+        ol.append(o.taken ? '● ' : '○ ', o.label + (o.auto ? ' (default)' : ''));
         if (o.taken && next?.kind === 'span') {
           const sub = list();
           sub.setAttribute('style', 'list-style:none;margin:0;padding:0 0 0 1em');

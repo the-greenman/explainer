@@ -172,7 +172,8 @@
         {
           "id": "again",
           "label": "Watch again",
-          "goes_to": "start"
+          "goes_to": "start",
+          "default": true
         },
         {
           "id": "replay",
