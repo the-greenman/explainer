@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://semanticops.com/schema/explainer.schema.json",
+  "title": "Explainer manifest",
+  "type": "object",
+  "required": ["id", "segments", "cues"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "out"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "enum": ["video", "audio", "none"] },
+          "src": { "type": "string" },
+          "in": { "type": "number", "minimum": 0, "default": 0 },
+          "out": { "type": "number", "minimum": 0, "description": "End in media seconds; for kind none, out - in is the duration." },
+          "captions": { "type": "string", "description": "WebVTT URL" },
+          "next": { "type": ["string", "null"], "description": "Segment or marker id; null = no continuation; absent = next in array order." },
+          "ends": { "enum": ["continue", "stop"], "default": "continue" }
+        }
+      }
+    },
+    "markers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "segment", "t"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "segment": { "type": "string" },
+          "t": { "type": "number", "minimum": 0 },
+          "label": { "type": "string" }
+        }
+      }
+    },
+    "cues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "segment", "start", "end", "renders"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "segment": { "type": "string" },
+          "start": { "type": "number", "minimum": 0 },
+          "end": { "type": "number", "minimum": 0 },
+          "renders": { "type": "string", "description": "<typeRef>@<version>" },
+          "variant": { "type": "string" },
+          "data": { "type": "object" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "label": { "type": "string" },
+                "goes_to": { "type": "string", "description": "Segment or marker id (choice options)." },
+                "sets_variable": { "type": "string" },
+                "sets_value": { "type": "string" }
+              }
+            }
+          },
+          "hold": { "type": "boolean", "description": "Pause when the clock reaches the cue end." },
+          "loop_from": { "type": "number", "minimum": 0, "description": "While held, loop media between loop_from and end." },
+          "when_var": { "type": "string" },
+          "when_value": { "type": "string" }
+        }
+      }
+    }
+  }
+}

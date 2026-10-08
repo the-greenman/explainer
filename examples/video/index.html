@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video example: decision records</title>
+<style>
+  :root { --explainer-ink: #111; --explainer-accent: #7fd0ff; --explainer-bg: #000; }
+  body { background: #151512; color: #e8e0d0; font: 16px system-ui, sans-serif; max-width: 60rem; margin: 1.5rem auto; padding: 0 1rem; }
+  .bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .75rem 0; }
+  input[type=range] { flex: 1; min-width: 10rem; }
+  button { font: inherit; }
+  #readout { font: 13px ui-monospace, monospace; color: #b9b19f; }
+</style>
+</head>
+<body>
+<explainer-player id="vid"></explainer-player>
+<div class="bar">
+  <button data-explainer-action="play">Play</button>
+  <button data-explainer-action="pause">Pause</button>
+  <button data-explainer-action="back">Back</button>
+  <button id="prev">&laquo; Prev</button>
+  <button id="next">Next &raquo;</button>
+  <button data-explainer-action="rate" data-explainer-value="0.5">0.5x</button>
+  <button data-explainer-action="rate" data-explainer-value="1">1x</button>
+  <button data-explainer-action="rate" data-explainer-value="1.5">1.5x</button>
+  <button data-explainer-action="rate" data-explainer-value="2">2x</button>
+  <button data-explainer-action="rate" data-explainer-value="-1">Reverse</button>
+  <button id="cc" aria-pressed="true">Captions: on</button>
+  <input id="scrub" type="range" min="0" max="38.6" step="0.01" value="0" data-explainer-action="seek" aria-label="Scrub">
+</div>
+<div id="readout"></div>
+<script type="module">
+  import '../../src/index.ts';
+  import './components.ts';
+  const p = document.getElementById('vid');
+  const m = await (await fetch('manifest.json')).json();
+  p.manifest = m; // set after components.ts registered its components (src= would race the registration)
+  // prev/next = markers across segments, in timeline order (segment index, then t)
+  const pos = (segment, t) => m.segments.findIndex((s) => s.id === segment) * 1e6 + t;
+  const sorted = [...m.markers].sort((a, b) => pos(a.segment, a.t) - pos(b.segment, b.t));
+  const here = () => pos(p.clock.segmentId, p.clock.t);
+  const cur = () => { let i = 0; sorted.forEach((x, k) => { if (here() >= pos(x.segment, x.t)) i = k; }); return i; };
+  document.getElementById('next').onclick = () => { const i = cur() + 1; if (i < sorted.length) p.jumpTo(sorted[i].id); };
+  document.getElementById('prev').onclick = () => { const i = cur(); p.jumpTo(sorted[here() - pos(sorted[i].segment, sorted[i].t) > 1.5 ? i : Math.max(0, i - 1)].id); };
+  let cc = true;
+  const ccBtn = document.getElementById('cc');
+  const applyCc = () => {
+    const v = p.querySelector('video');
+    if (v) for (const tr of v.textTracks) tr.mode = cc ? 'showing' : 'hidden';
+    ccBtn.textContent = `Captions: ${cc ? 'on' : 'off'}`; ccBtn.setAttribute('aria-pressed', cc);
+  };
+  ccBtn.onclick = () => { cc = !cc; applyCc(); };
+  p.addEventListener('explainer:segment', () => setTimeout(applyCc, 0)); // a new segment mounts a new <track>
+  addEventListener('keydown', (e) => {
+    if (e.target.closest?.('input')) return;
+    if (e.key === 'ArrowRight') document.getElementById('next').click();
+    if (e.key === 'ArrowLeft') document.getElementById('prev').click();
+    if (e.key === ' ') { e.preventDefault(); p.clock.playing ? p.pause() : p.play(); }
+  });
+  const s = document.getElementById('scrub'), ro = document.getElementById('readout');
+  const tick = () => {
+    const c = p.clock, v = p.querySelector('video');
+    if (c) {
+      s.max = c.length; if (document.activeElement !== s) s.value = c.t;
+      ro.textContent = `segment ${c.segmentId} | clock t ${c.t.toFixed(2)} | video.currentTime ${v ? v.currentTime.toFixed(2) : '-'} | rate ${c.rate}${c.holding ? ' | HOLD' : ''}${c.playing ? '' : ' | paused'}`;
+    }
+    requestAnimationFrame(tick);
+  };
+  tick();
+  window.__p = p;
+</script>
+</body>
+</html>

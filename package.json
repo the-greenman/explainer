@@ -1,0 +1,22 @@
+{
+  "name": "explainer",
+  "version": "0.1.0",
+  "description": "Video/audio/animation + text + diagrams on one reversible timeline",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "schema"
+  ],
+  "scripts": {
+    "dev": "vite --open /demo/",
+    "build": "vite build",
+    "test": "node --test test/ examples/"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "linkedom": "^0.18.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

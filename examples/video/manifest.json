@@ -1,0 +1,190 @@
+{
+  "id": "decision-records",
+  "title": "Why write decisions down",
+  "segments": [
+    {
+      "id": "intro",
+      "kind": "video",
+      "src": "../../demo/video/intro.mp4",
+      "in": 0,
+      "out": 38.6,
+      "captions": "../../demo/video/intro.vtt"
+    },
+    {
+      "id": "purpose",
+      "kind": "video",
+      "src": "../../demo/video/purpose.mp4",
+      "in": 0,
+      "out": 48.7,
+      "captions": "../../demo/video/purpose.vtt",
+      "ends": "stop"
+    }
+  ],
+  "markers": [
+    {
+      "id": "start",
+      "segment": "intro",
+      "t": 0,
+      "label": "Start"
+    },
+    {
+      "id": "four-questions",
+      "segment": "intro",
+      "t": 15,
+      "label": "The four questions"
+    },
+    {
+      "id": "purpose",
+      "segment": "purpose",
+      "t": 0,
+      "label": "Why it matters"
+    },
+    {
+      "id": "record",
+      "segment": "purpose",
+      "t": 20.4,
+      "label": "The decision record"
+    }
+  ],
+  "cues": [
+    {
+      "id": "title",
+      "segment": "intro",
+      "start": 1.0,
+      "end": 6.6,
+      "renders": "com.semanticops.explainer/intro@1",
+      "variant": "lower-third",
+      "data": {
+        "title": "Decision records",
+        "subtitle": "Writing decisions down so everyone agrees what was decided"
+      }
+    },
+    {
+      "id": "questions",
+      "segment": "intro",
+      "start": 15.0,
+      "end": 28.2,
+      "renders": "com.semanticops.explainer/numbered-list@1",
+      "variant": "panel",
+      "data": {
+        "heading": "Four questions"
+      },
+      "items": [
+        {
+          "id": "q1",
+          "text": "What was decided?",
+          "at": 0.1
+        },
+        {
+          "id": "q2",
+          "text": "Why?",
+          "at": 4.5
+        },
+        {
+          "id": "q3",
+          "text": "What were the other options?",
+          "at": 5.7
+        },
+        {
+          "id": "q4",
+          "text": "When to revisit?",
+          "at": 7.5
+        }
+      ]
+    },
+    {
+      "id": "loop",
+      "segment": "purpose",
+      "start": 1.3,
+      "end": 16.0,
+      "renders": "com.semanticops.explainer.example/cycle@1",
+      "data": {
+        "caption": "again and again"
+      },
+      "items": [
+        {
+          "label": "Debate"
+        },
+        {
+          "label": "Decide?"
+        },
+        {
+          "label": "Forget"
+        },
+        {
+          "label": "Repeat"
+        }
+      ]
+    },
+    {
+      "id": "useful",
+      "segment": "purpose",
+      "start": 40.0,
+      "end": 46.8,
+      "renders": "com.semanticops.explainer.example/emphasis@1",
+      "items": [
+        {
+          "id": "w1",
+          "text": "clear",
+          "at": 0.2
+        },
+        {
+          "id": "w2",
+          "text": "visible",
+          "at": 1.0
+        },
+        {
+          "id": "w3",
+          "text": "useful",
+          "at": 1.8
+        }
+      ]
+    },
+    {
+      "id": "thanks",
+      "segment": "purpose",
+      "start": 20.6,
+      "end": 26.0,
+      "renders": "com.semanticops.explainer/intro@1",
+      "variant": "lower-third",
+      "when_var": "revisit",
+      "when_value": "yes",
+      "data": {
+        "title": "Second time round",
+        "subtitle": "This is the part worth keeping"
+      }
+    },
+    {
+      "id": "next",
+      "segment": "purpose",
+      "start": 47.0,
+      "end": 48.6,
+      "renders": "com.semanticops.explainer/choice@1",
+      "variant": "scrim",
+      "hold": true,
+      "loop_from": 47.0,
+      "data": {
+        "prompt": "What next?"
+      },
+      "items": [
+        {
+          "id": "again",
+          "label": "Watch again",
+          "goes_to": "start"
+        },
+        {
+          "id": "replay",
+          "label": "Replay the four questions",
+          "goes_to": "four-questions"
+        },
+        {
+          "id": "skip",
+          "label": "Jump to the decision record",
+          "goes_to": "record",
+          "sets_variable": "revisit",
+          "sets_value": "yes"
+        }
+      ]
+    }
+  ]
+}

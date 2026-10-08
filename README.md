@@ -21,7 +21,7 @@ Choice options (`items` of a choice cue): `{id, label, goes_to?, sets_variable?,
 
 ## Commands and events
 Public methods: `play pause seek(t) setRate(r) jumpTo(id) back choose(optionId)` (negative rate = reverse).
-Dispatch `explainer:command` with `detail: {action: play|pause|seek|rate|jump|back|choose|set, to?, rate?, t?, option?, var?, value?, target?}` on a player or the document (document = all players, or those matching `detail.target`).
+Dispatch `explainer:command` with `detail: {action: play|pause|seek|rate|jump|back|choose|set, to?, rate?, t?, option?, var?, value?, target?}` on a player or the document (document: the first player, or those matching `detail.target`; `rate` also starts playback).
 Buttons: `[data-explainer-action="play|pause|seek|rate|jump|back"]` with `data-explainer-to` / `data-explainer-value`, optional `data-explainer-target="selector"`. Scroll sections: `[data-explainer-seek="markerId"]`.
 Emitted (bubbling): `explainer:segment`, `explainer:cueenter`, `explainer:cueexit`, `explainer:choice`.
 
@@ -35,9 +35,16 @@ Emitted (bubbling): `explainer:segment`, `explainer:cueenter`, `explainer:cueexi
 ```ts
 { meta: { renders, name, variants: string[] },
   mount(host, data): HTMLElement | SVGElement,   // build once, append to host
-  render(node, p, data, vars, items): void }     // pure function of its arguments
+  render(node, p, data, vars, items, dur): void } // pure function of its arguments; dur = cue length (s)
 ```
-No accumulated state: render at p=0.3 must be identical however you got there (`test/purity.test.ts`). `data.variant` carries the cue variant. Theme with `--explainer-ink`, `--explainer-accent`, `--explainer-bg`, `--explainer-font`. Register with `registerComponents(pack)`; duplicate `renders` throws.
+No accumulated state and no enter/exit hooks: render at p=0.3 must be identical however you got there (`test/purity.test.ts`). Cue layers ignore pointer events; an interactive component sets `pointer-events:auto` on its own node.
+
+Canvas components: `canvasComponent(meta, (ctx, {w, h, changed}, p, data, vars, items, dur) => …)` mounts the canvas, handles devicePixelRatio and resize (`changed` = rebuild size-derived geometry), and hands you a context in CSS pixels. Use `rng(seed)` instead of `Math.random`. `data.variant` carries the cue variant. Theme with `--explainer-ink`, `--explainer-accent`, `--explainer-bg`, `--explainer-font`. Register with `registerComponents(pack)`; duplicate `renders` throws.
 
 ## Commands
-`npm run dev` (gallery at demo/), `npm run build`, `npm test`.
+`npm run dev` (gallery at /demo/; examples at /examples/creation/ and /examples/equilibrium/), `npm run build`, `npm test` (includes examples).
+
+Project context, status and next steps: `CLAUDE.md`. Plan: `docs/plan.md`. Capability findings: `docs/findings.md`.
+
+## scrub-root
+`<explainer-player play="scrub" scrub-root="#article">`: progress is the scroll position through that element (0 when its top reaches the viewport top, 1 when its bottom reaches the viewport bottom), so a sticky player inside a tall article is scrubbed by scrolling the article. Without it, the player's own position through the viewport is used. See `examples/creation/`.

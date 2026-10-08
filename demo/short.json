@@ -1,0 +1,8 @@
+{
+  "id": "short",
+  "segments": [{ "id": "s", "kind": "none", "out": 6 }],
+  "cues": [
+    { "id": "l", "segment": "s", "start": 0, "end": 6, "renders": "com.semanticops.explainer/numbered-list@1",
+      "data": { "heading": "Scroll-driven" }, "items": ["One", "Two", "Three", "Four"] }
+  ]
+}

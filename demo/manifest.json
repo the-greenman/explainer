@@ -1,0 +1,25 @@
+{
+  "id": "gallery",
+  "title": "Gallery",
+  "segments": [
+    { "id": "main", "kind": "none", "out": 12 },
+    { "id": "detour", "kind": "none", "out": 4, "ends": "stop" }
+  ],
+  "markers": [{ "id": "list", "segment": "main", "t": 5, "label": "The list" }],
+  "cues": [
+    { "id": "i1", "segment": "main", "start": 0, "end": 5, "renders": "com.semanticops.explainer/intro@1",
+      "data": { "title": "Explainer", "subtitle": "Hello, {name}", "presenter": "Gallery demo" } },
+    { "id": "l1", "segment": "main", "start": 5, "end": 10, "renders": "com.semanticops.explainer/numbered-list@1",
+      "data": { "heading": "Three steps for {name}" }, "items": ["Frame the question", "Gather the views", "Decide together"] },
+    { "id": "c1", "segment": "main", "start": 10, "end": 12, "hold": true, "renders": "com.semanticops.explainer/choice@1",
+      "data": { "prompt": "What next?" },
+      "items": [
+        { "id": "detour", "label": "Take the detour", "goes_to": "detour" },
+        { "id": "happy", "label": "Just say I am happy", "sets_variable": "mood", "sets_value": "happy" }
+      ] },
+    { "id": "d1", "segment": "detour", "start": 0, "end": 4, "variant": "minimal", "renders": "com.semanticops.explainer/intro@1",
+      "data": { "title": "The detour", "subtitle": "Reverse past the start to come back." } },
+    { "id": "d2", "segment": "detour", "start": 1, "end": 4, "when_var": "mood", "when_value": "happy", "renders": "com.semanticops.explainer/intro@1",
+      "data": { "title": "Glad you are happy", "presenter": "gated by when_var" } }
+  ]
+}
