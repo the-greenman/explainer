@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-09
+
+### Added
+- Captions in the strip for video. Player `captions` is now a list of tokens: `strip` (every segment kind with captions, video included, uses the engine's strip; the native track is loaded with `mode="hidden"` and the text is the cue active at the clock position, never from track events), `native` (opt out), `below` / `over`, `off`. The strip is the default (below the stage, two lines reserved) when a canvas is used and some scene has a media slot, so captions no longer vanish while the video is hidden or sit tiny in a small slot. Pages without a canvas, or without slots, are unchanged. `data-captions="on|off"` on the player, `data-explainer-captions` on the strip, `captions-live="polite"` (the strip is `aria-live="off"` by default, to avoid announcing the narration twice), cue tags dropped and line breaks kept (`plainCue`), the `captions` command keeps the other tokens. Order with kept children: stage, strip, kept children. (the-greenman/muDemocracy.org#331)
+- Offline render with media slots. Overlay mode cuts a transparent hole in the `under` layer exactly over the media box of each frame (`holePolygon`; hidden: none; no scene visible: whole frame) and writes `media.json` (per output frame `{n, x, y, w, h, opacity, fit}` in output px) and `media.keyframes.json` (changes only). Composite mode draws the video in the browser, seeked frame-exact (`seeked` plus `requestVideoFrameCallback`, timeout `--seek-timeout`) and muxes the source audio; without slots the ffmpeg path is unchanged. `renderFrame` returns `{media, canvas}`; `player.usesMediaSlots`, `player.attachRenderMedia()`. `scripts/render.mjs`: `--engine <dist>` (render a page with another engine build), `--chromium-arg`, `--seek-timeout`; `--page` also hides `html`/`body` pseudo-elements (page grain). (the-greenman/muDemocracy.org#331)
+
 ## [0.2.0] - 2026-10-09
 
 ### Added

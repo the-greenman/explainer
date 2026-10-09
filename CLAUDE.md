@@ -75,14 +75,14 @@ This file gives project context for agents working in this repo. Read it before 
 - **Session role:** the session orchestrates, and Sonnet subagents do the unit work. Give each one a precise brief and review its output; never trust its report alone. The gallery 404 and the click-swallowing layer bug were both missed in agent reports.
 
 ## Current state
-- **Released v0.2.0** (2026-10-09): theme and component contracts, `<explainer-motion>`, the styleguide harness, scenes (site markup revealed by motion), the design canvas, the poster still, media slots, over layers and the control API. See `CHANGELOG.md`.
+- **Released v0.3.0** (2026-10-09), after v0.2.0 the same day: theme and component contracts, `<explainer-motion>`, the styleguide harness, scenes (site markup revealed by motion), the design canvas, the poster still, media slots, over layers and the control API. See `CHANGELOG.md`.
 - **Plan revised** (owner, 2026-10-09; muDemocracy.org#309): an explainer is the page, performed. Scenes are the site's own markup and CSS, revealed by choreography (`data-at`/`data-for`/`data-fx`, `--fx-p`); the video's size and position follow `data-media-slot` boxes. The engine never builds or restyles brand markup.
 - **First playable page:** `/decision-recording` in muDemocracy.org (branch `feat/328-decision-recording-page`), with the owner's two recorded clips choreographed across 1:27.
 - **Real media:** video is verified with real clips, in `examples/video/` and on the site page. Audio-only is verified in the workshop's `tarot` example. Safari, Firefox, phones and R2 delivery are untested.
 
 ## Next steps
 1. **muDemocracy pilot: guide 1.1.** Tracking is in **the-greenman/muDemocracy.org#309** and its sub-issues; PRs here reference those (`Refs the-greenman/muDemocracy.org#N`).
-   - Engine gaps found on the page: captions for video in a strip under the stage (native cues vanish when the video is small or hidden); overlay-only render must leave the video's slot transparent.
+   - Live (unlisted) at https://mudemocracy.org/decision-recording; media on R2 `media.mudemocracy.org` (bucket `mudemocracy-video`, versioned paths). v0.3.0 adds the caption strip for video and slot-aware offline renders.
    - The owner's script and scene list (#315) decide the remaining scenes.
 2. **SRS package (plan step 3, #318)**, after the pilot's scene and manifest shapes settle.
    - `srs/` holds the `com.semanticops.explainer` types: segment, marker, cue (scene, layer), choice/choice-option, variable, and the `goes-to` relation type.
