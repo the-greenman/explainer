@@ -46,7 +46,7 @@ Mark one option of a choice cue `default: true` and an explainer can play straig
 - Limits: the spans come from `routeSpans` in `src/clock.ts`, shared with the clock. Only a jump to a branch-only segment (rare) leaves the route; that span is then labelled by the segment it is in, from 0, and rewinding to the first span always goes to the first segment's start.
 
 ## Captions
-Video: the `captions` WebVTT of a segment is a native `<track>` (browser-rendered). Audio has no native display, so the player renders the cue text itself into a caption strip (`div.explainer-captions`, bottom-centred over the stage and above the overlay, `pointer-events:none`, themed with `--explainer-ink`, `--explainer-bg`, `--explainer-font`). The track is loaded with mode `hidden`; each paint the strip shows the cue active at the media time `in + clock.t`, found by time from `track.cues` (`cueTextAt` in `src/captions.ts`), never from `cuechange`, so it is right in reverse and after a scrub. `textContent` only. Hide it with `captions="off"` on `<explainer-player>` (observed), `player.captionsOn = false`, or `explainer:command {action:'captions', on?}` (no `on` toggles). It is not created in `render` mode (the offline render keeps `captions.vtt` as a soft track).
+Video: the `captions` WebVTT of a segment is a native `<track>` (browser-rendered). Audio has no native display, so the player renders the cue text itself into a caption strip (`div.explainer-captions`, bottom-centred over the stage and above the overlay, `pointer-events:none`, themed with `--explainer-ink`, `--explainer-bg`, `--explainer-font`). The track is loaded with mode `hidden`; each paint the strip shows the cue active at the media time `in + clock.t`, found by time from `track.cues` (`cueTextAt` in `src/captions.ts`), never from `cuechange`, so it is right in reverse and after a scrub. `textContent` only. `captions="below"` (observed) lays the strip out under the stage instead, with two lines always reserved so the page does not jump between cues: use it on narrow screens, where an overlaid strip covers the picture. Hide it with `captions="off"` on `<explainer-player>` (observed), `player.captionsOn = false`, or `explainer:command {action:'captions', on?}` (no `on` toggles). It is not created in `render` mode (the offline render keeps `captions.vtt` as a soft track).
 
 ## Play modes
 `<explainer-player play="manual|enter|scrub">` - manual (default): commands only; enter: plays when scrolled into view, rewinds when scrolled back out below; scrub: scroll position maps to `t` over the current segment.
@@ -90,6 +90,16 @@ Player API for this: `<explainer-player render>` (set before the manifest) mount
 `npm run dev` (gallery at /demo/; examples at /examples/creation/, /examples/equilibrium/, /examples/video/ and /examples/tarot/), `npm run build`, `npm test` (includes examples).
 
 Project context, status and next steps: `CLAUDE.md`. Plan: `docs/plan.md`. Capability findings: `docs/findings.md`.
+
+## Embedding in a site
+`npm pack` here gives `explainer-0.1.0.tgz`; install it in the site (`npm i ./explainer-0.1.0.tgz`). Exports: `explainer` (core, defines `<explainer-player>`/`<explainer-path>`, needs the DOM) and `explainer/tarot` (the tarot pack; no DOM at import). Both share one registry chunk, but the pack registers into the core's registry on import, so **import `explainer` first**. Client-only (SSR/SvelteKit: do it in `onMount`):
+```js
+await import('explainer'); await import('explainer/tarot');
+player.manifest = m; // <explainer-player> element; manifest from examples/tarot/build-manifest.mjs
+```
+Deploy manifest: `node examples/tarot/build-manifest.mjs --media-base https://cdn/x/ --captions /path/x.vtt --out out.json`.
+`crossorigin` on `<explainer-player>` (e.g. `crossorigin="anonymous"`) is copied to the media element when it is created (not observed; set it before the manifest) and `<track>` inherits it. Needed when the VTT is cross-origin (it then needs CORS headers); a same-origin VTT with cross-origin audio works without it.
+Theme: CSS variables on the player or an ancestor, `--explainer-accent`, `--explainer-bg`, `--explainer-ink`, `--explainer-font`.
 
 ## scrub-root
 `<explainer-player play="scrub" scrub-root="#article">`: progress is the scroll position through that element (0 when its top reaches the viewport top, 1 when its bottom reaches the viewport bottom), so a sticky player inside a tall article is scrubbed by scrolling the article. Without it, the player's own position through the viewport is used. See `examples/creation/`.

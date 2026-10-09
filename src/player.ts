@@ -37,11 +37,12 @@ export class ExplainerPlayer extends HTMLElement {
   attributeChangedCallback(name: string) {
     if (!this.clock) return;
     if (name === 'playthrough') this.applyPlaythrough(this.hasAttribute('playthrough'));
-    else this.paintCaption();
+    else { this.placeStrip(); this.paintCaption(); }
   }
-  /** `captions="off"` hides the caption strip of audio segments (video keeps its native track). */
+  /** `captions="off"` hides the caption strip of audio segments (video keeps its native track); `captions="below"` lays it out under the stage instead of over it. */
   get captionsOn() { return this.getAttribute('captions') !== 'off'; }
   set captionsOn(on: boolean) { if (on) this.removeAttribute('captions'); else this.setAttribute('captions', 'off'); }
+  get captionsBelow() { return this.getAttribute('captions') === 'below'; }
   get playthrough() { return this.hasAttribute('playthrough'); }
   set playthrough(on: boolean) { this.toggleAttribute('playthrough', !!on); }
 
@@ -82,11 +83,9 @@ export class ExplainerPlayer extends HTMLElement {
       this.strip.className = 'explainer-captions';
       this.strip.hidden = true;
       this.strip.setAttribute('aria-live', 'off');
-      this.strip.setAttribute('style', 'position:absolute;left:50%;bottom:3%;transform:translateX(-50%);max-width:80%;box-sizing:border-box;padding:.35em .8em;text-align:center;white-space:pre-line;font:inherit;font-size:clamp(.8rem,2.1cqw + .3rem,1.4rem);line-height:1.35;border-radius:6px;pointer-events:none;'
-        + 'font-family:var(--explainer-font,system-ui,sans-serif);color:var(--explainer-ink,#fff);background:color-mix(in srgb,var(--explainer-bg,#000) 80%,transparent)');
-      this.stage.append(this.strip);
     }
     this.append(this.stage);
+    this.placeStrip();
 
     this.clock = new Clock(m, {
       segment: (id) => { this.loadSegment(); this.emit('explainer:segment', { id }); },
@@ -147,6 +146,8 @@ export class ExplainerPlayer extends HTMLElement {
         const el = document.createElement(want);
         el.setAttribute('style', 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain');
         el.preload = 'auto';
+        // read at media creation only (not observed): <track> inherits the CORS mode of the media element
+        if (this.hasAttribute('crossorigin')) el.crossOrigin = this.getAttribute('crossorigin') ?? '';
         if (el instanceof HTMLVideoElement) {
           el.playsInline = true;
           // frame-accurate reads while playing forward
@@ -220,13 +221,31 @@ export class ExplainerPlayer extends HTMLElement {
   }
 
   /** Caption strip: the cue active at the media time (`in + t`), found by time from the hidden track so it is right in reverse and when scrubbing. textContent only. */
+  /** Over the stage (default): bottom-centred above the overlay. Below: in flow after the stage, two lines always reserved so
+   *  the page does not jump between cues (narrow screens, where an overlaid strip would cover the picture). */
+  private placeStrip() {
+    const el = this.strip;
+    if (!el) return;
+    const look = 'box-sizing:border-box;padding:.35em .8em;text-align:center;white-space:pre-line;font:inherit;line-height:1.35;pointer-events:none;'
+      + 'font-family:var(--explainer-font,system-ui,sans-serif);color:var(--explainer-ink,#fff);';
+    if (this.captionsBelow) {
+      el.setAttribute('style', look + 'display:flex;align-items:center;justify-content:center;min-height:calc(2lh + .7em);font-size:1rem;background:var(--explainer-bg,#000)');
+      this.stage.after(el);
+    } else {
+      el.setAttribute('style', look + 'position:absolute;left:50%;bottom:3%;transform:translateX(-50%);max-width:80%;font-size:clamp(.8rem,2.1cqw + .3rem,1.4rem);border-radius:6px;'
+        + 'background:color-mix(in srgb,var(--explainer-bg,#000) 80%,transparent)');
+      this.stage.append(el);
+    }
+  }
+
   private paintCaption() {
     const el = this.strip;
     if (!el) return;
     const s = this.clock.segment, tr = s.kind === 'audio' && this.captionsOn ? this.media?.textTracks[0] : undefined;
     const text = tr ? cueTextAt(tr.cues as any, (s.in ?? 0) + this.clock.t) : '';
     if (text !== this.stripText) { this.stripText = text; el.textContent = text; }
-    el.hidden = !text;
+    // below: the reserved space stays while captions are on, empty between cues; it goes only with captions="off" or no track
+    el.hidden = this.captionsBelow ? !tr : !text;
   }
 
   private paint() {
