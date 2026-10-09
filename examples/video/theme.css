@@ -1,0 +1,2 @@
+/* Theme variables for offline rendering (scripts/render.mjs picks theme.css up next to the manifest); index.html links it too. */
+:root { --explainer-ink: #111; --explainer-accent: #7fd0ff; }

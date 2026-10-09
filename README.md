@@ -61,6 +61,28 @@ No accumulated state and no enter/exit hooks: render at p=0.3 must be identical 
 
 Canvas components: `canvasComponent(meta, (ctx, {w, h, changed}, p, data, vars, items, dur) => …)` mounts the canvas, handles devicePixelRatio and resize (`changed` = rebuild size-derived geometry), and hands you a context in CSS pixels. Use `rng(seed)` instead of `Math.random`. `data.variant` carries the cue variant. Theme with `--explainer-ink`, `--explainer-accent`, `--explainer-bg`, `--explainer-font`. Register with `registerComponents(pack)`; duplicate `renders` throws.
 
+## Rendering
+Render an explainer to files offline, frame-exact (not recorded in real time): `src/render-plan.ts` steps the pure clock with a fixed `dt = 1/fps` and returns one `{segmentId, t}` per output frame plus the source cuts; `scripts/render.mjs` paints each frame in headless chromium (`examples/render/index.html`, no media, everything transparent) and encodes with ffmpeg. Needs ffmpeg/ffprobe on the path and playwright (`PLAYWRIGHT=/path/to/playwright/index.mjs`, else `playwright` or the srs-web copy); it starts `vite` itself unless one answers at `--url`.
+
+```
+node scripts/render.mjs --manifest examples/video/manifest.json [--path default | --choose a,b] [--fps 30] [--scale 1.5]
+  [--out dir] [--mode overlay|composite|both] [--format prores|png|webm] [--burn-captions] [--var k=v] [--keep-frames]
+  [--pack module] [--css file] [--url http://localhost:5199] [--workers 4] [--max-seconds 3600]
+```
+- **Path.** `--path default` (the default) is playthrough: defaults are taken, and it stops at `ends: stop`, or at the first branch that goes back to a position already rendered (a loop: one lap, ending at the choice point). `--choose a,b` is playthrough off: at each choice the next option id is chosen; when the list runs out the render stops at that choice; an unknown id is an error. `--max-seconds` caps the walk. `--var` seeds variables (`sets_variable` options set them along the way, so `when_var` cues follow the path).
+- **Resolution.** The CSS stage is always 1280x720 (so rem/px text keeps its proportions); `--scale` is the device scale factor: 1.5 gives 1920x1080.
+- **Theme and components.** The page loads `components.ts` and `theme.css` next to the manifest if present (override with `--pack` / `--css`, repo-relative or absolute). Choice cues are never drawn: a render is a video.
+
+Outputs in `--out` (default `render-out/`):
+- `overlay.mov` (`--format prores`: ProRes 4444 with alpha), or `overlay/%05d.png` (`png`), or `overlay.webm` (VP9 alpha). Overlay-only is a first-class output (`--mode overlay`): the layer with alpha, nothing else.
+- `cuts.json`: fps, size, duration and the plan's cuts `{segment, src, sourceFile, srcIn, srcOut, outStart, outEnd, frames}` (source times are file seconds, `in + t`), so an editor can line the overlay up against the source. A branch that repeats or skips a span is just another cut.
+- `captions.vtt`: the source captions cut and retimed along the cuts (cues outside are dropped, cues across a cut boundary clipped).
+- `video.mp4` (`--mode composite|both`): the source trimmed and joined along the cuts (adjacent cuts of one file are joined), scaled to the overlay size, overlay on top, H.264 + AAC, faststart. Captions are a soft `mov_text` track, or burned in with `--burn-captions`. Segments without a picture (`kind: none`, with silence; `kind: audio`, with their audio) get the theme's `--explainer-bg` underneath (`--bg <colour>` overrides; black if neither). Put the theme in a `theme.css` next to the manifest, linked by the page too, so the render matches the live player.
+
+Overlay-only workflow: `node scripts/render.mjs --manifest m.json --mode overlay`, then in the editor put `overlay.mov` on a track above the source, cut the source to `cuts.json` (or just use the composite for a check), and import `captions.vtt`. The overlay frame `n` is output time `n / fps`.
+
+Player API for this: `<explainer-player render>` (set before the manifest) mounts no media and runs no rAF loop; `player.renderFrame(segmentId, t, vars?)` puts the clock there and paints once.
+
 ## Commands
 `npm run dev` (gallery at /demo/; examples at /examples/creation/ and /examples/equilibrium/), `npm run build`, `npm test` (includes examples).
 

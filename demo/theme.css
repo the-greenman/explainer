@@ -1,0 +1,2 @@
+/* Theme variables, shared by index.html and the offline render (scripts/render.mjs picks theme.css up next to the manifest). */
+:root { --explainer-ink: #1b1b1f; --explainer-accent: #b3261e; --explainer-bg: #faf7f2; --explainer-font: Georgia, serif; }

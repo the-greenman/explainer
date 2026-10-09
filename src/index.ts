@@ -8,6 +8,7 @@ export * from './clock.ts';
 export * from './components/index.ts';
 export * from './store.ts';
 export * from './path.ts';
+export * from './render-plan.ts';
 export { ExplainerPlayer, ExplainerPath };
 
 registerComponents(corePack);

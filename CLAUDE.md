@@ -47,9 +47,11 @@ This file gives project context for agents working in this repo. Read it before 
 - **History is the path taken.** Only default continuation and choices push entries (`{segmentId, t, to, hold?}`); navigation (`jumpTo`: markers, prev/next, scroll sections, the `jump` command) never pushes. Reverse unwinds a branch when it crosses where it landed (else, past the segment start, goes to the default predecessor's end, else stops at 0). `back()` pops and, for a choice, re-shows it held.
 - **Default path (playthrough).** A choice option can be `default: true` (a field on `choice-option`, to settle before the SRS types). With `playthrough` on (player attribute, `playthrough` command, button), a hold takes its default instead of holding and records it in history like a real choice, marked `auto: true` (the path view shows "(default)"). A choice with no default just continues. The choice overlay is not displayed at all in playthrough. Defaults that loop back loop until stopped: no loop guard, history grows per lap.
 - **The capability probes are learning exercises**, not faithful recreations. Record findings rather than polishing.
+- **Rendering is offline and frame-stepped,** never recorded in real time: the plan steps the pure clock, chromium paints each `{segment, t}`. **Overlay-only (ProRes 4444 alpha + `cuts.json` + `captions.vtt`) is a first-class output**, not a by-product of the composite.
 
 ## Layout
 - `src/clock.ts` is the pure clock logic (no DOM). `src/player.ts` is the custom element. `src/triggers.ts` holds buttons, scroll sections and the `play="enter|scrub"` modes. `src/store.ts` holds the variables. `src/path.ts` is the pure path-taken steps (history to spans/choices) and `src/path-view.ts` is `<explainer-path>` (crumbs/tree).
+- `src/render-plan.ts` is the pure render plan (frames and source cuts by stepping a `Clock`; captions retiming). `scripts/render.mjs` is the offline renderer CLI; `examples/render/` is its page. See README "Rendering".
 - `src/components/` holds the core pack (intro, numbered-list, choice) plus `base.ts` (contract and registry) and `canvas.ts`.
 - `schema/explainer.schema.json` is the manifest contract.
 - `demo/` is the gallery.

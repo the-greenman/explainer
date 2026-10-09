@@ -72,7 +72,7 @@ export class ExplainerPlayer extends HTMLElement {
       // a playthrough branch happens inside advance(), possibly in the same segment or file: the media must follow
       jump: () => { this.syncMedia(true); this.pathChanged(); },
     });
-    this.clock.playthrough = this.hasAttribute('playthrough');
+    this.clock.playthrough = this.hasAttribute('playthrough') || this.hasAttribute('render'); // a render is a video: choices are not shown
     // each cue's component is mounted once; fails loudly on an unregistered type
     this.entries = m.cues.map((cue) => {
       const comp = lookup(cue.renders);
@@ -99,6 +99,7 @@ export class ExplainerPlayer extends HTMLElement {
     this.cleanup.push(() => this.removeEventListener('explainer:command', onCmd), () => document.removeEventListener('keydown', onKey), bindPlayMode(this));
 
     this.last = performance.now();
+    if (this.hasAttribute('render')) return; // offline render: no loop, frames are placed with renderFrame()
     // ponytail: rAF runs always, even idle/offscreen; gate it on IntersectionObserver if many players get heavy
     const loop = () => { this.step(); this.raf = requestAnimationFrame(loop); };
     this.raf = requestAnimationFrame(loop);
@@ -112,6 +113,7 @@ export class ExplainerPlayer extends HTMLElement {
   // locally); the chosen mitigation is one file per explainer with segments as in/out cuts (same src: no reload,
   // and no re-seek when already at the cut). A second preloaded element stays in reserve for multi-file explainers.
   private loadSegment() {
+    if (this.hasAttribute('render')) return; // offline render: never any media
     const s = this.clock.segment;
     const want = s.kind === 'none' ? null : s.kind;
     if (want !== (this.media?.localName ?? null)) {
@@ -202,6 +204,22 @@ export class ExplainerPlayer extends HTMLElement {
       if (show) e.comp.render(e.node as HTMLElement, this.reduced ? 1 : cueProgress(c, t), e.data, vars, c.items ?? [], c.end - c.start);
       if (show !== e.shown) { e.shown = show; this.emit(show ? 'explainer:cueenter' : 'explainer:cueexit', { cue: c.id }); }
     }
+  }
+
+  /**
+   * Offline rendering (attribute `render`, set before the manifest): no media element, no rAF loop. Puts the clock at exactly
+   * `{segmentId, t}`, applies `vars` (changed values only is fine), and paints once. Choice cues are hidden as in playthrough.
+   * `scripts/render.mjs` drives this once per planned frame (`src/render-plan.ts`).
+   */
+  renderFrame(segmentId: string, t: number, vars: Record<string, string> = {}) {
+    if (!this.hasAttribute('render')) throw new Error('renderFrame needs the render attribute on <explainer-player>');
+    for (const [k, v] of Object.entries(vars)) this.store.set(k, v);
+    const c = this.clock;
+    c.segmentId = segmentId;
+    c.holding = null;
+    c.playing = false;
+    c.t = t;
+    this.paint();
   }
 
   private act(fn: () => void) { fn(); this.syncMedia(true); this.pathChanged(); }

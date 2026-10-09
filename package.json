@@ -11,7 +11,8 @@
   "scripts": {
     "dev": "vite --open /demo/",
     "build": "vite build",
-    "test": "node --test test/ examples/"
+    "test": "node --test test/ examples/",
+    "render": "node scripts/render.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Explainer render page</title>
+<style>
+  /* Everything transparent: the overlay layer is composited elsewhere. Set on the player, not :root, so a theme's
+     --explainer-bg cannot make the overlay opaque; the theme's value is read below as the composite background. */
+  explainer-player { --explainer-bg: transparent !important; }
+  html, body { margin: 0; padding: 0; background: transparent; }
+  #frame { width: 1280px; height: 720px; }
+  * { transition: none !important; animation: none !important; }
+</style>
+</head>
+<body>
+<div id="frame"><explainer-player render></explainer-player></div>
+<script type="module">
+  // Query: manifest=<url> pack=<module url> (repeatable, loaded before the manifest) css=<stylesheet url> (repeatable)
+  // Then window.__ready resolves and window.__frame(segmentId, t, vars) paints one frame. See scripts/render.mjs.
+  import '../../src/index.ts';
+  const q = new URLSearchParams(location.search);
+  window.__ready = (async () => {
+    for (const href of q.getAll('css')) {
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.append(l);
+      await new Promise((ok, no) => { l.onload = ok; l.onerror = () => no(new Error('css failed: ' + href)); });
+    }
+    for (const m of q.getAll('pack')) await import(/* @vite-ignore */ m);
+    const m = await (await fetch(q.get('manifest'))).json();
+    const p = document.querySelector('explainer-player');
+    p.manifest = m;
+    await document.fonts.ready;
+    window.__frame = (seg, t, vars) => p.renderFrame(seg, t, vars);
+    // the theme's background as #rrggbb (or '' if none): the composite puts it under segments without a picture
+    const probe = document.createElement('i');
+    probe.style.color = getComputedStyle(document.documentElement).getPropertyValue('--explainer-bg').trim() || 'transparent';
+    document.body.append(probe);
+    const [r, g, b, a = 1] = getComputedStyle(probe).color.match(/[\d.]+/g).map(Number);
+    probe.remove();
+    window.__bg = a === 0 ? '' : '#' + [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, '0')).join('');
+    return true;
+  })();
+</script>
+</body>
+</html>
