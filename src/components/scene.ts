@@ -1,4 +1,5 @@
 import { clamp01, ramp } from '../clock.ts';
+import { parseSlot, type SlotDef } from '../media-slots.ts';
 import { FADE_OFFSET } from '../motion.ts';
 import type { Component } from './base.ts';
 
@@ -13,10 +14,11 @@ import type { Component } from './base.ts';
  */
 export const SCENE_FX_DEFAULT_FOR = 0.5;
 export const SCENE_FADE_S = 0.4;
-export const SCENE_FX = ['fade', 'rise', 'write', 'wipe', 'none'];
+export const SCENE_FX = ['fade', 'rise', 'write', 'wipe', 'words', 'none'];
+export const SCENE_TRANSITIONS = ['cut', 'fade', 'wipe', 'wipe-left'];
 
 export type Choreo = { el: HTMLElement; at: number; len: number; fx: string };
-type Transition = 'cut' | 'fade';
+type Transition = 'cut' | 'fade' | 'wipe' | 'wipe-left';
 
 const num = (s: string | null | undefined, d: number) => { const n = s == null || s.trim() === '' ? NaN : Number(s); return Number.isFinite(n) ? n : d; };
 const quote = (s: string) => `"${s.replace(/["\\]/g, '\\$&')}"`;
@@ -34,11 +36,51 @@ export function choreoOf(root: ParentNode): Choreo[] {
 /** The progress (0..1) of one choreographed element at scene time `t` seconds. */
 export const fxProgress = (at: number, len: number, t: number) => (len > 0 ? clamp01((t - at) / len) : t >= at ? 1 : 0);
 
+/** A media slot element of a scene with its parsed timing; `rect` is filled by the player (measuring is the only DOM part). */
+export type SlotEl = Omit<SlotDef, 'rect'> & { el: HTMLElement };
+/** The `data-media-slot` elements of `root`, in document order. See README "Media slots". */
+export function slotsOf(root: ParentNode): SlotEl[] {
+  return Array.from(root.querySelectorAll('[data-media-slot]') as ArrayLike<HTMLElement>).map((el) => ({ el, ...parseSlot((n) => el.getAttribute(n)) }));
+}
+
 const pct = (x: number) => `${Math.round((1 - x) * 100000) / 1000}%`;
 
+/**
+ * `data-fx="words"`: wraps the words of the element's text nodes in `<span data-w>` (once, at mount, from the template alone, so
+ * everything after is still a function of p). Returns the spans in document order, which is reading order across wrapped lines.
+ */
+export function wrapWords(el: Element): HTMLElement[] {
+  const doc = el.ownerDocument;
+  const out: HTMLElement[] = [];
+  const walk = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === 3) {
+        const text = child.textContent ?? '';
+        if (!/\S/.test(text)) continue;
+        const frag = doc.createDocumentFragment();
+        for (const piece of text.split(/(\s+)/)) {
+          if (!piece) continue;
+          if (/^\s+$/.test(piece)) { frag.append(doc.createTextNode(piece)); continue; }
+          const w = doc.createElement('span');
+          w.setAttribute('data-w', '');
+          w.textContent = piece;
+          frag.append(w);
+          out.push(w);
+        }
+        node.replaceChild(frag, child);
+      } else if (child.nodeType === 1 && !['SCRIPT', 'STYLE'].includes((child as Element).tagName)) walk(child);
+    }
+  };
+  walk(el);
+  return out;
+}
+
+/** Opacity of word `i` of `n` at progress `x`: it starts at i/n and fades in over the next 1/n, so x = 1 shows every word. */
+export const wordOpacity = (i: number, n: number, x: number) => clamp01(x * n - i);
+
 /** Built-in effects: the properties each sets from its progress `x`. A function of `x` alone. */
-function applyFx(el: HTMLElement, fx: string, x: number) {
-  const s = el.style;
+function applyFx(c: Choreo, x: number) {
+  const el = c.el, fx = c.fx, s = el.style;
   s.setProperty('--fx-p', String(Math.round(x * 1000) / 1000));
   switch (fx) {
     case 'fade': s.setProperty('opacity', x.toFixed(3)); break;
@@ -48,6 +90,11 @@ function applyFx(el: HTMLElement, fx: string, x: number) {
       break;
     case 'write': s.setProperty('clip-path', `inset(0 ${pct(x)} 0 0)`); break;
     case 'wipe': s.setProperty('clip-path', `inset(0 0 ${pct(x)} 0)`); break;
+    case 'words': {
+      const w = words.get(el) ?? [];
+      w.forEach((span, i) => span.style.setProperty('opacity', wordOpacity(i, w.length, x).toFixed(3)));
+      break;
+    }
     // 'none' and any other name: --fx-p only, the site's CSS does the rest
   }
 }
@@ -60,8 +107,10 @@ export function findSceneTemplate(host: Element, id: string): HTMLTemplateElemen
 
 const parts = (data: Record<string, any>) => {
   const tr = data.transition ?? {};
-  const kind = (v: unknown): Transition => (v === 'fade' ? 'fade' : 'cut');
-  return { tin: kind(tr.in), tout: kind(tr.out), fade: Math.max(0, num(String(tr.dur ?? ''), SCENE_FADE_S)) };
+  const kind = (v: unknown): Transition => (SCENE_TRANSITIONS.includes(v as string) ? (v as Transition) : 'cut');
+  // out: only cut and fade exist; a wipe at the end is a cut
+  const out = kind(tr.out);
+  return { tin: kind(tr.in), tout: out === 'fade' ? out : 'cut' as Transition, fade: Math.max(0, num(String(tr.dur ?? ''), SCENE_FADE_S)) };
 };
 
 /**
@@ -71,7 +120,7 @@ const parts = (data: Record<string, any>) => {
 export function sceneStillP(data: Record<string, any>, dur: number, end: number | null): number {
   const { tin, tout, fade } = parts(data);
   if (!(dur > 0)) return 1;
-  const inEnd = tin === 'fade' ? fade : 0;
+  const inEnd = tin !== 'cut' ? fade : 0;
   let t = end === null && !inEnd ? dur : Math.max(end ?? 0, inEnd);
   if (tout === 'fade') t = Math.min(t, dur - fade);
   return clamp01(t / dur);
@@ -89,6 +138,7 @@ function sceneEnd(id: unknown): number | null {
 }
 
 const mounted = new WeakMap<Element, Choreo[]>();
+const words = new WeakMap<Element, HTMLElement[]>(); // element with data-fx="words" -> its word spans, made at mount
 const warned = new Set<string>();
 
 export const scene: Component = {
@@ -105,15 +155,23 @@ export const scene: Component = {
     const tpl = findSceneTemplate(host, id);
     if (tpl) node.append(((tpl as any).content ?? tpl).cloneNode(true));
     else if (!warned.has(id)) { warned.add(id); console.warn(`scene: no <template data-scene="${id}"> found`); }
-    mounted.set(node, choreoOf(node));
+    const ch = choreoOf(node);
+    for (const c of ch) if (c.fx === 'words') words.set(c.el, wrapWords(c.el));
+    mounted.set(node, ch);
     return node;
   },
   render(node, p, data, _vars, _items, dur) {
     const t = p * dur;
     const { tin, tout, fade } = parts(data);
-    const inF = tin === 'fade' && fade > 0 ? ramp(t, 0, fade) : 1;
+    const inF = tin !== 'cut' && fade > 0 ? ramp(t, 0, fade) : 1;
     const outF = tout === 'fade' && fade > 0 ? 1 - ramp(t, dur - fade, dur) : 1;
-    (node as HTMLElement).style.setProperty('opacity', String(Math.round(inF * outF * 1000) / 1000));
-    for (const c of mounted.get(node) ?? []) applyFx(c.el, c.fx, fxProgress(c.at, c.len, t));
+    const st = (node as HTMLElement).style;
+    // fade: opacity only. wipe: the new surface is opaque and is revealed by a clip from the bottom (wipe-left: from the right), no blend
+    st.setProperty('opacity', String(Math.round((tin === 'fade' ? inF : 1) * outF * 1000) / 1000));
+    if (tin === 'wipe' || tin === 'wipe-left') {
+      if (inF >= 1) st.removeProperty('clip-path');
+      else st.setProperty('clip-path', tin === 'wipe' ? `inset(${pct(inF)} 0 0 0)` : `inset(0 0 0 ${pct(inF)})`);
+    }
+    for (const c of mounted.get(node) ?? []) applyFx(c, fxProgress(c.at, c.len, t));
   },
 };
