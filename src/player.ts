@@ -1,10 +1,21 @@
 import { cueTextAt } from './captions.ts';
 import { Clock, cueProgress, type Cue, type Manifest } from './clock.ts';
 import { lookup, stillP, type Component } from './components/index.ts';
+import { canvasId, chooseCanvas, parseCanvas, type CanvasSpec } from './design-canvas.ts';
 import { stillTime } from './still.ts';
 import { gate, scopeFor, type Store } from './store.ts';
 import { bindPlayMode } from './triggers.ts';
 import { CAPTION_INK, CAPTION_OVER, CAPTION_PAPER, FONT_FAMILY, LEADING_CAPTION, PAPER, SIZE_CAPTION, SIZE_CAPTION_OVER } from './theme.ts';
+
+const STYLE_ID = 'explainer-player-style';
+/** The poster children stay in the DOM (no-JS, print before load) but give way once the player has painted. */
+function ensureStyle() {
+  if (typeof document === 'undefined' || !document.head || document.getElementById(STYLE_ID)) return;
+  const s = document.createElement('style');
+  s.id = STYLE_ID;
+  s.textContent = 'explainer-player > [data-explainer-poster=hidden]{display:none !important}';
+  document.head.prepend(s);
+}
 
 type Entry = { cue: Cue; comp: Component; node: Element; wrap: HTMLElement; data: Record<string, any>; shown: boolean };
 export type Command = { action: string; to?: string; rate?: number; t?: number; option?: string; depth?: number; hold?: boolean; on?: boolean; var?: string; value?: string };
@@ -25,20 +36,38 @@ export class ExplainerPlayer extends HTMLElement {
   private sig = '';
   private strip: HTMLElement | null = null;
   private stripText = '';
+  private layer!: HTMLElement; // where media and cue layers go: the design canvas, else the stage
+  private canvasEl: HTMLElement | null = null;
+  private specs: CanvasSpec[] = [];
+  private spec?: CanvasSpec;
+  private poster = false; // poster="still": painted at posterT until the first play, seek or jump
+  private posterT = 0;
+  private live = false;
 
   set manifest(m: Manifest) { this.pending = m; if (this.isConnected) this.init(m); }
   get manifest() { return this.clock.manifest; }
 
   async connectedCallback() {
+    // the server-rendered children (templates, the inline manifest) may not be parsed yet
+    if (document.readyState === 'loading') await new Promise<void>((r) => document.addEventListener('DOMContentLoaded', () => r(), { once: true }));
     const src = this.getAttribute('src');
     if (src && !this.pending) this.pending = await (await fetch(src)).json();
-    if (this.pending && this.isConnected) this.init(this.pending);
+    if (!src && !this.pending) this.pending = this.inlineManifest();
+    if (this.pending && this.isConnected && !this.live) this.init(this.pending);
   }
 
-  static observedAttributes = ['playthrough', 'captions'];
+  /** A child `<script type="application/json" data-manifest>`, used when there is no `src` and no `.manifest` set. */
+  private inlineManifest(): Manifest | undefined {
+    const el = this.querySelector('script[type="application/json"][data-manifest]');
+    if (!el) return undefined;
+    try { return JSON.parse(el.textContent ?? ''); } catch (err) { console.warn('<explainer-player>: invalid JSON in <script data-manifest>', err); return undefined; }
+  }
+
+  static observedAttributes = ['playthrough', 'captions', 'canvas'];
   attributeChangedCallback(name: string) {
     if (!this.clock) return;
-    if (name === 'playthrough') this.applyPlaythrough(this.hasAttribute('playthrough'));
+    if (name === 'canvas') { if (this.live) this.init(this.clock.manifest); } // the stage is rebuilt; the clock starts again
+    else if (name === 'playthrough') this.applyPlaythrough(this.hasAttribute('playthrough'));
     else { this.placeStrip(); this.paintCaption(); }
   }
   /** `captions="off"` hides the caption strip of audio segments (video keeps its native track); `captions="below"` lays it out under the stage instead of over it. */
@@ -61,7 +90,11 @@ export class ExplainerPlayer extends HTMLElement {
     cancelAnimationFrame(this.raf);
     this.cleanup.forEach((f) => f());
     this.cleanup = [];
-    this.replaceChildren();
+    // only what the player made: the site's own children (templates, poster, inline manifest) stay
+    this.stage?.remove();
+    this.strip?.remove();
+    this.live = false;
+    this.canvasEl = null;
     this.media = null;
     this.curSrc = '';
     this.strip = null;
@@ -74,12 +107,25 @@ export class ExplainerPlayer extends HTMLElement {
     const mq = matchMedia('(prefers-reduced-motion: reduce)');
     this.reduced = mq.matches && !this.hasAttribute('render');
     this.style.display = 'block';
+    const poster = Array.from(this.children).filter((c) => !['TEMPLATE', 'SCRIPT'].includes(c.tagName)); // the static first: hidden after the first paint
     this.stage = document.createElement('div');
-    // container-type: components size text and layout in cqw, so a stage looks the same at any width (and in the offline render)
-    this.stage.setAttribute('style', 'position:relative;overflow:hidden;aspect-ratio:16/9;container-type:inline-size;background:' + PAPER);
+    this.specs = parseCanvas(this.getAttribute('canvas'));
     this.overlay = document.createElement('div');
     this.overlay.setAttribute('style', 'position:absolute;inset:0');
-    this.stage.append(this.overlay);
+    if (this.specs.length) {
+      // design canvas: layers live in a W x H CSS px box scaled to the stage width (see applyCanvas); captions stay outside it
+      this.stage.setAttribute('style', 'position:relative;overflow:hidden;background:' + PAPER);
+      this.canvasEl = document.createElement('div');
+      this.canvasEl.append(this.overlay);
+      this.stage.append(this.canvasEl);
+      this.layer = this.canvasEl;
+    } else {
+      // container-type: components size text and layout in cqw, so a stage looks the same at any width (and in the offline render)
+      this.stage.setAttribute('style', 'position:relative;overflow:hidden;aspect-ratio:16/9;container-type:inline-size;background:' + PAPER);
+      this.stage.append(this.overlay);
+      this.layer = this.stage;
+    }
+    this.spec = undefined;
     if (!this.hasAttribute('render')) {
       // caption strip for audio (an <audio> has no native display): above the overlay, never takes the pointer
       this.strip = document.createElement('div');
@@ -88,6 +134,7 @@ export class ExplainerPlayer extends HTMLElement {
       this.strip.setAttribute('aria-live', 'off');
     }
     this.append(this.stage);
+    this.applyCanvas(false);
     this.placeStrip();
 
     this.clock = new Clock(m, {
@@ -143,6 +190,21 @@ export class ExplainerPlayer extends HTMLElement {
     addEventListener('afterprint', after);
     this.cleanup.push(() => { removeEventListener('beforeprint', before); removeEventListener('afterprint', after); });
 
+    this.live = true;
+    this.poster = this.getAttribute('poster') === 'still' && !this.hasAttribute('render');
+    if (this.poster) {
+      this.posterT = this.stillTime(this.clock.segmentId);
+      if (this.media) this.media.currentTime = (this.clock.segment.in ?? 0) + this.posterT;
+    }
+    this.paint(); // first paint, then the static children give way to it
+    for (const el of poster) el.setAttribute('data-explainer-poster', 'hidden');
+    if (poster.length) ensureStyle();
+    if (this.canvasEl && typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => { this.applyCanvas(true); });
+      ro.observe(this);
+      this.cleanup.push(() => ro.disconnect());
+    }
+
     this.last = performance.now();
     if (this.hasAttribute('render')) return; // offline render: no loop, frames are placed with renderFrame()
     // ponytail: rAF runs always, even idle/offscreen; gate it on IntersectionObserver if many players get heavy
@@ -179,7 +241,7 @@ export class ExplainerPlayer extends HTMLElement {
             el.requestVideoFrameCallback(f);
           }
         }
-        this.stage.insertBefore(el, this.overlay);
+        this.layer.insertBefore(el, this.overlay);
         this.media = el;
       }
     }
@@ -271,8 +333,25 @@ export class ExplainerPlayer extends HTMLElement {
     el.hidden = this.captionsBelow ? !tr : !text;
   }
 
+  /** Pick the design canvas for the player's width and size the canvas element to it (no-op without a `canvas` attribute). */
+  private applyCanvas(repaint: boolean) {
+    const el = this.canvasEl;
+    if (!el || !this.specs.length) return;
+    const spec = chooseCanvas(this.specs, this.clientWidth || Infinity)!;
+    const scale = this.stage.clientWidth ? this.stage.clientWidth / spec.w : 1;
+    const key = `${canvasId(spec)}@${scale}`;
+    if (key === el.getAttribute('data-key')) return;
+    el.setAttribute('data-key', key);
+    this.spec = spec;
+    el.setAttribute('data-canvas', canvasId(spec));
+    el.setAttribute('style', `position:absolute;left:0;top:0;width:${spec.w}px;height:${spec.h}px;overflow:hidden;container-type:size;transform-origin:0 0;transform:scale(${scale})`);
+    this.stage.style.aspectRatio = `${spec.w}/${spec.h}`;
+    if (repaint && this.live) this.paint();
+  }
+
   private paint() {
-    const { t, segmentId } = this.clock;
+    const { segmentId } = this.clock;
+    const t = this.poster ? this.posterT : this.clock.t;
     const vars = this.store.all();
     for (const e of this.entries) {
       const c = e.cue;
@@ -344,9 +423,10 @@ export class ExplainerPlayer extends HTMLElement {
     this.place(s.segmentId, s.t, s.holding, s.playing);
   }
 
-  private act(fn: () => void) { fn(); this.syncMedia(true); this.pathChanged(); }
+  /** Every navigation ends the poster (`poster="still"`) and starts from the normal position; pause alone leaves it. */
+  private act(fn: () => void, leavePoster = true) { if (leavePoster) this.poster = false; fn(); this.syncMedia(true); this.pathChanged(); }
   play() { this.act(() => this.clock.play()); }
-  pause() { this.act(() => this.clock.pause()); }
+  pause() { this.act(() => this.clock.pause(), false); }
   seek(t: number) { this.act(() => this.clock.seek(t)); }
   setRate(r: number) { this.act(() => this.clock.setRate(r)); }
   jumpTo(id: string) { this.act(() => this.clock.jumpTo(id)); }
