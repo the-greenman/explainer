@@ -23,3 +23,5 @@ const boot = () => { bindInputs(); initTriggers(); };
 if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot);
 else boot();
 export * from './design-canvas.ts';
+export * from './media-slots.ts';
+export * from './controls.ts';

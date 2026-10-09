@@ -70,6 +70,7 @@
               }
             }
           },
+          "layer": { "enum": ["under", "over"], "description": "With a player design canvas: under (default) draws the cue below the media, over draws it above the media." },
           "hold": { "type": "boolean", "description": "Pause when the clock reaches the cue end." },
           "loop_from": { "type": "number", "minimum": 0, "description": "While held, loop media between loop_from and end." },
           "when_var": { "type": "string" },
