@@ -1,6 +1,6 @@
 {
   "name": "explainer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Video/audio/animation + text + diagrams on one reversible timeline",
   "type": "module",
   "main": "dist/index.js",
