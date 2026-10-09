@@ -1,4 +1,4 @@
-import { cueTextAt } from './captions.ts';
+import { captionConfig, cueTextAt, plainCue, withCaptionsOn, type CaptionConfig } from './captions.ts';
 import { Clock, cueProgress, type Cue, type Manifest } from './clock.ts';
 import { lookup, stillP, type Component } from './components/index.ts';
 import { slotsOf } from './components/scene.ts';
@@ -76,17 +76,26 @@ export class ExplainerPlayer extends HTMLElement {
     try { return JSON.parse(el.textContent ?? ''); } catch (err) { console.warn('<explainer-player>: invalid JSON in <script data-manifest>', err); return undefined; }
   }
 
-  static observedAttributes = ['playthrough', 'captions', 'canvas'];
+  static observedAttributes = ['playthrough', 'captions', 'captions-live', 'canvas'];
   attributeChangedCallback(name: string) {
     if (!this.clock) return;
     if (name === 'canvas') { if (this.live) this.init(this.clock.manifest); } // the stage is rebuilt; the clock starts again
     else if (name === 'playthrough') this.applyPlaythrough(this.hasAttribute('playthrough'));
-    else { this.placeStrip(); this.paintCaption(); }
+    else if (name === 'captions-live') this.strip?.setAttribute('aria-live', this.getAttribute('captions-live') === 'polite' ? 'polite' : 'off');
+    else { this.placeStrip(); this.applyTrackModes(); this.paintCaption(); }
   }
-  /** `captions="off"` hides the caption strip of audio segments (video keeps its native track); `captions="below"` lays it out under the stage instead of over it. */
-  get captionsOn() { return this.getAttribute('captions') !== 'off'; }
-  set captionsOn(on: boolean) { if (on) this.removeAttribute('captions'); else this.setAttribute('captions', 'off'); }
-  get captionsBelow() { return this.getAttribute('captions') === 'below'; }
+  /**
+   * The `captions` attribute is a list of tokens (see `captionConfig` in src/captions.ts): `off`, `strip`, `native`, `below`, `over`.
+   * `off` hides the caption strip; `below` lays it under the stage. `strip` makes video use the strip too (native track hidden); it is the
+   * default when a canvas has a media slot, `native` opts out. `captionsOn` is the toggle (the `captions` command); the player reflects it as `data-captions="on|off"`.
+   */
+  private get capCfg(): CaptionConfig { return captionConfig(this.getAttribute('captions'), !!this.canvasEl, this.hasSlots); }
+  get captionsOn() { return this.capCfg.on; }
+  set captionsOn(on: boolean) {
+    const v = withCaptionsOn(this.getAttribute('captions'), on);
+    if (v === null) this.removeAttribute('captions'); else this.setAttribute('captions', v);
+  }
+  get captionsBelow() { return this.capCfg.below; }
   get playthrough() { return this.hasAttribute('playthrough'); }
   set playthrough(on: boolean) { this.toggleAttribute('playthrough', !!on); }
 
@@ -160,8 +169,10 @@ export class ExplainerPlayer extends HTMLElement {
       // caption strip for audio (an <audio> has no native display): above the overlay, never takes the pointer
       this.strip = document.createElement('div');
       this.strip.className = 'explainer-captions';
+      this.strip.setAttribute('data-explainer-captions', '');
       this.strip.hidden = true;
-      this.strip.setAttribute('aria-live', 'off');
+      // off by default: the narration is audible, so a live region would announce it twice; a site may set captions-live="polite"
+      this.strip.setAttribute('aria-live', this.getAttribute('captions-live') === 'polite' ? 'polite' : 'off');
     }
     this.insertBefore(this.stage, kept[0] ?? null); // kept children (a controls row) lay out after the stage
     this.applyCanvas(false);
@@ -191,6 +202,7 @@ export class ExplainerPlayer extends HTMLElement {
       // every scene cue is in the model (a scene without slots still counts as "a scene is visible"); slots mode is on if any has a slot
       this.sceneSlots = this.entries.flatMap((e) => (e.cue.renders.startsWith('com.semanticops.explainer/scene@') ? [{ cue: e.cue, slots: slotsOf(e.node) }] : []));
       this.hasSlots = this.sceneSlots.some((x) => x.slots.length > 0);
+      this.placeStrip(); // the strip's position and mode depend on slots
     }
     this.loadSegment();
     this.sig = '';
@@ -244,6 +256,7 @@ export class ExplainerPlayer extends HTMLElement {
       if (this.media) this.media.currentTime = (this.clock.segment.in ?? 0) + this.posterT;
     }
     this.paint(); // first paint, then the static children give way to it
+    this.paintCaption(); // the strip's reserved space (below) and data-captions are right from the first paint
     for (const el of poster) el.setAttribute('data-explainer-poster', 'hidden');
     if (poster.length) ensureStyle();
     if (this.canvasEl && typeof ResizeObserver !== 'undefined') {
@@ -303,9 +316,10 @@ export class ExplainerPlayer extends HTMLElement {
       this.media.replaceChildren();
       if (s.captions) {
         const tr = document.createElement('track');
-        Object.assign(tr, { kind: 'captions', src: s.captions, default: s.kind !== 'audio' });
+        const strip = this.stripFor(s.kind);
+        Object.assign(tr, { kind: 'captions', src: s.captions, default: !strip });
         this.media.append(tr);
-        if (s.kind === 'audio') tr.track.mode = 'hidden'; // loaded, never displayed natively: paintCaption() reads track.cues
+        if (strip) tr.track.mode = 'hidden'; // loaded, never displayed natively: paintCaption() reads track.cues
       }
     }
     // same file and already at the new segment's start (an adjacent cut): don't re-seek, it would snap back and stall
@@ -360,7 +374,7 @@ export class ExplainerPlayer extends HTMLElement {
    *  the page does not jump between cues (narrow screens, where an overlaid strip would cover the picture). */
   private placeStrip() {
     const el = this.strip;
-    if (!el) return;
+    if (!el || !this.stage) return;
     const look = `box-sizing:border-box;padding:.35em .8em;text-align:center;white-space:pre-line;font:inherit;line-height:${LEADING_CAPTION};pointer-events:none;`
       + `font-family:${FONT_FAMILY};color:${CAPTION_INK};`;
     if (this.captionsBelow) {
@@ -373,11 +387,24 @@ export class ExplainerPlayer extends HTMLElement {
     }
   }
 
+  /** Whether segments of this kind draw their captions in the strip: audio always, video with `captions="strip"` or by default with slots. */
+  private stripFor(kind: string) { return kind === 'audio' || (kind === 'video' && this.capCfg.video); }
+
+  /** The native track of a video is `hidden` (loaded, not drawn) while the strip shows it, and shown otherwise. */
+  private applyTrackModes() {
+    const m = this.media, s = this.clock?.segment;
+    if (!m || !s?.captions || s.kind !== 'video') return;
+    const want: TextTrackMode = this.stripFor(s.kind) ? 'hidden' : 'showing';
+    for (const t of Array.from(m.textTracks ?? [])) if (t.mode !== want) t.mode = want;
+  }
+
   private paintCaption() {
     const el = this.strip;
     if (!el) return;
-    const s = this.clock.segment, tr = s.kind === 'audio' && this.captionsOn ? this.media?.textTracks[0] : undefined;
-    const text = tr ? cueTextAt(tr.cues as any, (s.in ?? 0) + this.clock.t) : '';
+    const on = this.captionsOn;
+    if (this.getAttribute('data-captions') !== (on ? 'on' : 'off')) this.setAttribute('data-captions', on ? 'on' : 'off');
+    const s = this.clock.segment, tr = this.stripFor(s.kind) && on ? this.media?.textTracks[0] : undefined;
+    const text = tr ? plainCue(cueTextAt(tr.cues as any, (s.in ?? 0) + (this.poster ? this.posterT : this.clock.t))) : '';
     if (text !== this.stripText) { this.stripText = text; el.textContent = text; }
     // below: the reserved space stays while captions are on, empty between cues; it goes only with captions="off" or no track
     el.hidden = this.captionsBelow ? !tr : !text;

@@ -75,7 +75,9 @@
 <h2>Media slots: one video, choreographed</h2>
 <p>One video (<code>demo/media/slots.mp4</code>, made by <code>examples/scenes/prepare.sh</code>) whose size and position are set by the scenes.
   It is hidden during the hook, small in a corner, zoomed to fill the frame, under text (an <code>over</code> cue), then at the side.
-  The controls are the page's own markup, children of the player under the stage: click the stage, the arrow, the buttons or the rule.</p>
+  The controls are the page's own markup, children of the player under the stage: click the stage, the arrow, the buttons or the rule.
+  The captions are the engine's strip (the default with slots), not the browser's: they stay visible while the video is hidden.
+  <button type="button" data-explainer-action="captions" data-explainer-target="#slots">CC</button></p>
 <explainer-player id="slots" canvas="1280x720" poster="still">
   <section class="scene hook" data-explainer-poster><h1>Most explainers start with a talking head. This one starts with the point.</h1></section>
 
@@ -119,7 +121,7 @@
   <script type="application/json" data-manifest>
   {
     "id": "slots-example",
-    "segments": [{ "id": "v", "kind": "video", "src": "../../demo/media/slots.mp4", "out": 12, "still": 4 }],
+    "segments": [{ "id": "v", "kind": "video", "src": "../../demo/media/slots.mp4", "captions": "slots.vtt", "out": 12, "still": 4 }],
     "cues": [
       { "id": "hook", "segment": "v", "start": 0, "end": 3.1, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "hook" } },
       { "id": "small", "segment": "v", "start": 2.5, "end": 5.6, "renders": "com.semanticops.explainer/scene@1",

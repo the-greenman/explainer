@@ -48,6 +48,23 @@ Mark one option of a choice cue `default: true` and an explainer can play straig
 ## Captions
 Video: the `captions` WebVTT of a segment is a native `<track>` (browser-rendered). Audio has no native display, so the player renders the cue text itself into a caption strip (`div.explainer-captions`, bottom-centred over the stage and above the overlay, `pointer-events:none`, themed with `--explainer-ink`, `--explainer-bg`, `--explainer-font`). The track is loaded with mode `hidden`; each paint the strip shows the cue active at the media time `in + clock.t`, found by time from `track.cues` (`cueTextAt` in `src/captions.ts`), never from `cuechange`, so it is right in reverse and after a scrub. `textContent` only. `captions="below"` (observed) lays the strip out under the stage instead, with two lines always reserved so the page does not jump between cues: use it on narrow screens, where an overlaid strip covers the picture. Hide it with `captions="off"` on `<explainer-player>` (observed), `player.captionsOn = false`, or `explainer:command {action:'captions', on?}` (no `on` toggles). It is not created in `render` mode (the offline render keeps `captions.vtt` as a soft track).
 
+### The caption strip for video (`captions="strip"`)
+The browser draws a video's native cues inside the `<video>`: tiny when the video sits in a small slot, over the play affordance of the poster, and **gone while the video is hidden** (no active slot) although the narration goes on. So the engine's strip can show a video's captions too. The attribute `captions` on `<explainer-player>` is a space-separated list of tokens (observed):
+- `strip`: every segment kind with captions (video included) uses the strip. The native `<track>` stays loaded but with `mode="hidden"`, so the browser draws nothing; the strip shows the text of the cue active at the media time `in + clock.t`, found by time from `track.cues` (`cueTextAt`), never from `cuechange`, exactly as for audio. Tags in the cue (`<i>`, `<v Name>`) are dropped, a few entities decoded and line breaks kept (`plainCue`); `textContent` only, never HTML.
+- **The default with a canvas whose scenes carry a media slot:** `strip` and `below` are on without writing them. `native` is the explicit opt-out (video keeps the browser's own cue display; audio still uses the strip, an `<audio>` has none). Without a canvas, or with a canvas but no slot, nothing changes (strip for audio only, `strip` asks for it).
+- `below` / `over`: the strip lies in flow under the stage, or at the bottom over it. With the strip on a canvas the default is `below` (recommended: the picture stays clear); `over` opts out. Below, two lines of height are always reserved while the segment has captions, so the page does not jump between cues.
+- `off`: hide the strip. The `captions` command (`{action:'captions', on?}`, a `data-explainer-action="captions"` button, `player.captionsOn`) adds or removes that token and keeps the others (`captions="strip below off"`).
+
+```html
+<explainer-player canvas="1280x720" captions="strip below">…</explainer-player>   <!-- the default with slots, spelled out -->
+<explainer-player canvas="1280x720" captions="native">…</explainer-player>        <!-- opt out: the browser's cues -->
+```
+- **State.** The player reflects `data-captions="on|off"` (default `on`), so a site can style its CC button: `explainer-player[data-captions="off"] .cc { opacity:.5 }`.
+- **Styling.** The strip is `div.explainer-captions[data-explainer-captions]`, themed only by the caption tokens (`--explainer-caption-ink`, `--explainer-caption-paper`, `--explainer-size-caption`, `--explainer-size-caption-over`, `--explainer-leading-caption`, and the font), so a site restyles it entirely from CSS (`[data-explainer-captions] { … }`).
+- **Screen readers.** `aria-live="off"` by default: the narration is audible, and a live region would announce each cue a second time on top of the audio. A site that wants the live announcement (for instance a muted explainer) sets `captions-live="polite"` on the player (observed).
+- **Kept children.** When the site's controls are children of the player (not marked `data-explainer-poster`), the order is: the stage, then the strip (below), then the kept children, so the controls sit under the captions.
+- **Offline render.** The player in `render` mode has no strip. `captions.vtt` and `--burn-captions` are unchanged (see "Rendering"); in composite mode burning is still the ffmpeg `subtitles` filter.
+
 ## Play modes
 `<explainer-player play="manual|enter|scrub">` - manual (default): commands only; enter: plays when scrolled into view, rewinds when scrolled back out below; scrub: scroll position maps to `t` over the current segment.
 
