@@ -4,7 +4,7 @@ import { ACCENT, BUTTON, BUTTON_INK, INK, PAPER, SCRIM, SCRIM_INK, SIZE_HEADING 
 
 // Buttons ask the player to choose via a bubbling explainer:command.
 export const choice: Component = {
-  meta: { renders: 'com.semanticops.explainer/choice@1', name: 'Choice', variants: ['default', 'scrim'] },
+  meta: { renders: 'com.semanticops.explainer/choice@1', name: 'Choice', variants: ['default', 'scrim'], surfaces: ['web', 'video'] }, // still: the held state, p=1
   mount(host) {
     const root = host.ownerDocument.createElement('div');
     root.innerHTML = '<h2></h2><div class="opts"></div>';

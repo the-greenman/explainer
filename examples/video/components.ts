@@ -13,7 +13,9 @@ const f = (x: number) => x.toFixed(3);
  * Sits in a translucent card on the right (clear of a centred face).
  */
 export const cycle: Component = {
-  meta: { renders: `${NS}/cycle@1`, name: 'Cycle diagram', variants: ['default'] },
+  meta: { renders: `${NS}/cycle@1`, name: 'Cycle diagram', variants: ['default'], surfaces: ['video'],
+    // fades out over the last 0.4 s; the loop closes by p 0.95 and the caption is in by dur-0.5, so the still is just before that fade (cues of 8 s or more)
+    still: (_d, _i, dur) => Math.max(0, (dur - 0.4) / dur) },
   mount(host) {
     const root = host.ownerDocument.createElement('div');
     host.appendChild(root);
@@ -39,14 +41,15 @@ export const cycle: Component = {
       const txt = interpolate(label(items[k]), vars);
       nodes += `<g opacity="${f(o)}"><circle cx="${f(x1)}" cy="${f(y1)}" r="22" fill="#1b2233" stroke="#fff" stroke-width="1.5"/><text x="${f(x1)}" y="${f(y1)}" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#fff" font-family="inherit">${esc(txt)}</text></g>`;
     }
-    const title = data.caption ? `<text x="100" y="100" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#fff" opacity="${f(ramp(p, 0.9, 1))}" font-family="inherit">${esc(interpolate(data.caption, vars))}</text>` : '';
+    const title = data.caption ? `<text x="100" y="100" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#fff" opacity="${f(ramp(p * dur, dur - 1, dur - 0.5))}" font-family="inherit">${esc(interpolate(data.caption, vars))}</text>` : '';
     node.innerHTML = `<svg viewBox="0 0 200 200" style="display:block;width:100%;height:auto"><defs><marker id="ah" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L6 3L0 6z" fill="var(--explainer-accent,#7fd0ff)"/></marker></defs>${arcs}${nodes}${title}</svg>`;
   },
 };
 
 /** Words that pop in, each at its own `at` (seconds from cue start), stacked in a card on the right. */
 export const emphasis: Component = {
-  meta: { renders: `${NS}/emphasis@1`, name: 'Emphasis words', variants: ['default'] },
+  meta: { renders: `${NS}/emphasis@1`, name: 'Emphasis words', variants: ['default'], surfaces: ['video'],
+    still: (_d, _i, dur) => Math.max(0, (dur - 0.5) / dur) }, // fades out over the last 0.5 s
   mount(host) {
     const root = host.ownerDocument.createElement('div');
     host.appendChild(root);

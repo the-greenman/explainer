@@ -1,7 +1,17 @@
 import { FONT_FAMILY, INK } from '../theme.ts';
+export type Surface = 'web' | 'video';
+export type StillFn = (data: Record<string, any>, items: any[], dur: number) => number;
 
 export type Component = {
-  meta: { renders: string; name: string; variants: string[] };
+  /**
+   * - `surfaces`: where the component is meant to run. `web`: in-page animation (`<explainer-player play="enter|scrub">` over a
+   *   `none` segment). `video`: overlay cues on video/audio segments, and the offline render. Required, so every pack declares it.
+   * - `still`: the progress p at which the component shows its complete state (default 1). That frame is what print and
+   *   `prefers-reduced-motion` show, and `test/still.test.ts` checks it: all text fully opaque and displayed. Set it when
+   *   p=1 is not complete, e.g. a variant that fades out at the end. The function form receives `data` (carrying `variant`),
+   *   `items` and the cue length `dur`, because the right p can depend on all three. Read it with `stillP()`.
+   */
+  meta: { renders: string; name: string; variants: string[]; surfaces: Surface[]; still?: number | StillFn };
   mount(host: Element, data: Record<string, any>): HTMLElement | SVGElement;
   /**
    * Pure: output depends only on these arguments. `dur` is the cue's length in seconds (end - start).
@@ -18,6 +28,14 @@ export function registerComponents(pack: Component[]) {
   }
 }
 export const lookup = (renders: string) => reg.get(renders);
+export const registered = () => [...reg.values()];
+
+/** The progress p (clamped to 0..1) at which `comp` shows its complete state for this cue; see `Component.meta.still`. */
+export function stillP(comp: Pick<Component, 'meta'>, data: Record<string, any>, items: any[], dur: number): number {
+  const s = comp.meta.still;
+  const p = typeof s === 'function' ? s(data, items, dur) : s ?? 1;
+  return Math.min(1, Math.max(0, Number.isFinite(p) ? p : 1));
+}
 
 /** Shared inline-style helpers (theme via CSS custom properties, see `src/theme.ts`). */
 export const FONT = `font-family:${FONT_FAMILY};color:${INK}`;

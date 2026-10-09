@@ -39,9 +39,10 @@ export function initTriggers() {
   document.querySelectorAll('[data-explainer-seek]').forEach((el) => io.observe(el));
 }
 
-/** play="enter|scrub" modes of a player; returns cleanup. manual = no-op. */
-export function bindPlayMode(p: ExplainerPlayer): () => void {
+/** play="enter|scrub" modes of a player; returns cleanup. manual = no-op. `reduced` (prefers-reduced-motion): bind nothing, the player sits at its still frame. */
+export function bindPlayMode(p: ExplainerPlayer, reduced = false): () => void {
   const mode = p.getAttribute('play');
+  if (reduced) return () => {};
   if (mode === 'enter') {
     let seen = false;
     const io = new IntersectionObserver(([e]) => {

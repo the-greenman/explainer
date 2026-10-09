@@ -56,11 +56,17 @@ Video: the `captions` WebVTT of a segment is a native `<track>` (browser-rendere
 
 ## Component contract
 ```ts
-{ meta: { renders, name, variants: string[] },
+{ meta: { renders, name, variants: string[], surfaces: ('web'|'video')[], still? },
   mount(host, data): HTMLElement | SVGElement,   // build once, append to host
   render(node, p, data, vars, items, dur): void } // pure function of its arguments; dur = cue length (s)
 ```
 No accumulated state and no enter/exit hooks: render at p=0.3 must be identical however you got there (`test/purity.test.ts`). Cue layers ignore pointer events; an interactive component sets `pointer-events:auto` on its own node.
+
+**Surfaces and the static frame.** One library serves two surfaces: `web` (in-page animation, `play="enter|scrub"` over a `none` segment) and `video` (overlay cues on video/audio segments, and the offline render). `meta.surfaces` is required, so every pack must declare where its components run. Every component must also have a complete **static frame**, which is what print and `prefers-reduced-motion` show. `meta.still` is the progress p of that frame (a number, or `(data, items, dur) => p`; default 1). Set it when p=1 is not complete, e.g. a variant that fades out at the end (intro `lower-third` stills at 0.5; numbered-list `panel` at `(dur - 0.4) / dur`). The function form sees `data.variant`, `items` and `dur`; read it with `stillP(comp, data, items, dur)`. `test/still.test.ts` renders every registered component and variant at its still and fails if any text is translucent (below 0.99, with a listed allowance for text dimmed on purpose) or hidden.
+
+**Still time of a segment** (`src/still.ts`, pure): the manifest may give `still` (seconds within the segment) on a segment; otherwise it is the max over the segment's cues of `cue.start + stillP * (cue.end - cue.start)`, clamped to the segment length. Hold cues (choices) are left out, since they sit at the very end, unless the segment has no other cue. `player.stillTime(id?)` returns it.
+- **Reduced motion.** With `prefers-reduced-motion: reduce`, a player with `play="enter"` or `play="scrub"` does not animate: it pauses at the still time of its first segment and stays (it follows changes of the setting). In every play mode visible cues are rendered at their still p.
+- **Print.** On `beforeprint` every player pauses at the still time of its current segment; on `afterprint` it goes back to its position (history untouched) and resumes if it was playing.
 
 Canvas components: `canvasComponent(meta, (ctx, {w, h, changed}, p, data, vars, items, dur) => …)` mounts the canvas, handles devicePixelRatio and resize (`changed` = rebuild size-derived geometry), and hands you a context in CSS pixels. Use `rng(seed)` instead of `Math.random`. `data.variant` carries the cue variant. Theme with `--explainer-ink`, `--explainer-accent`, `--explainer-bg`, `--explainer-font`. Register with `registerComponents(pack)`; duplicate `renders` throws.
 
