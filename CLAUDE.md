@@ -36,7 +36,7 @@ This file gives project context for agents working in this repo. Read it before 
 - **SRS package `com.semanticops.explainer`** goes in `srs/` in this repo. The namespace is semanticops, not mudemocracy: that was an owner correction.
 - **Media is hosted on Cloudflare R2** as progressive MP4/M4A, not HLS. Records hold URLs, never binaries.
 - **Dogfood here first.**
-  - Do not touch muDemocracy.org or muSrs until a separate move-over issue (muDemocracy.org#322). Opening and commenting on the pilot's tracking issues there is allowed.
+  - This repo is the brand-neutral engine. Brand packs live in their sites (see "Engine and site packs" below).
   - Examples live in `examples/`.
 
 ## Decisions after approval
@@ -46,6 +46,7 @@ This file gives project context for agents working in this repo. Read it before 
 - **One media file per explainer where possible**, with segments as `in`/`out` cuts of it. Separate files still freeze about 300 ms at the boundary; crossing a cut inside one file is seamless (the player skips the re-seek when already at the cut). R2 has no 25 MB per-file limit (that is a Pages/Workers static-asset limit), so the budget is bandwidth: about 2.4 Mbit/s at the current encode, about 90 MB per 5 minutes. A delay after a choice jump (a seek of about 250-320 ms) is accepted.
 - **History is the path taken.** History always equals the route from the start to where you are. Default continuation and choices push entries (`{segmentId, t, to, hold?}`); navigation (`jumpTo` and `seek`: markers, prev/next, scroll sections, the `jump` command, scrub) cuts history back when the target is on an earlier span of the route (most recent wins, even before a choice), pushes the default-continuation hops when the target is further along, and leaves history alone only for a branch-only target (`routeSpans` in `clock.ts`, shared with the path view). Reverse unwinds a branch when it crosses where it landed (else, past the segment start, goes to the default predecessor's end, else stops at 0). `back()` pops and, for a choice, re-shows it held.
 - **Default path (playthrough).** A choice option can be `default: true` (a field on `choice-option`, to settle before the SRS types). With `playthrough` on (player attribute, `playthrough` command, button), a hold takes its default instead of holding and records it in history like a real choice, marked `auto: true` (the path view shows "(default)"). A choice with no default just continues. The choice overlay is not displayed at all in playthrough. Defaults that loop back loop until stopped: no loop guard, history grows per lap.
+- **Engine and site packs** (owner, 2026-10-09). This repo is the engine and stays brand-neutral: clock, player, triggers, store, path view, the component contract, neutral mechanisms themed only by tokens, and the tooling (styleguide harness, review frames, offline render). Everything that only makes sense in one brand lives in that site's repo as a domain pack. For muDemocracy that means `muDemocracy.org/src/motion/`: the theme (mapping `tokens.css` onto `--explainer-*` directly, so nothing is copied), brand elements such as the logo, decision-record card and debate cycle, and explainer manifests. Brand elements are not only for video: they run in pages too. The site depends on this repo by git tag (`github:the-greenman/explainer#vX.Y.Z`). The test for which side a component belongs on: a mechanism a theme can dress goes here; a thing that only makes sense in one brand's look goes in the site.
 - **The capability probes are learning exercises**, not faithful recreations. Record findings rather than polishing.
 - **Rendering is offline and frame-stepped,** never recorded in real time: the plan steps the pure clock, chromium paints each `{segment, t}`. **Overlay-only (ProRes 4444 alpha + `cuts.json` + `captions.vtt`) is a first-class output**, not a by-product of the composite.
 
@@ -84,5 +85,5 @@ This file gives project context for agents working in this repo. Read it before 
    - `srs/` holds the `com.semanticops.explainer` types: segment, marker, component types, choice/choice-option, variable, and the `goes-to` relation type.
    - Add specimen records and a generic `scripts/export.mjs` (srs CLI → manifest), then replace the placeholder `renders` refs.
    - Write only through the srs CLI or MCP and validate after each batch. No CLI or MCP command writes `packageDependencies` yet (srs-rust#1168).
-3. **Move-over:** publishing on the guide page (#322) is the first change to muDemocracy.org.
+3. **The muDemocracy pack moves into muDemocracy.org now**, not at the end. Publishing on the guide page (#322) is then only the video.
 4. **Open gaps** are in `docs/findings.md`. Add them when the pilot needs them.
