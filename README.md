@@ -64,6 +64,70 @@ No accumulated state and no enter/exit hooks: render at p=0.3 must be identical 
 
 Canvas components: `canvasComponent(meta, (ctx, {w, h, changed}, p, data, vars, items, dur) => …)` mounts the canvas, handles devicePixelRatio and resize (`changed` = rebuild size-derived geometry), and hands you a context in CSS pixels. Use `rng(seed)` instead of `Math.random`. `data.variant` carries the cue variant. Theme with `--explainer-ink`, `--explainer-accent`, `--explainer-bg`, `--explainer-font`. Register with `registerComponents(pack)`; duplicate `renders` throws.
 
+## Theme
+The contract is `src/theme.ts`: one exported constant per themeable value, each a `var(--explainer-<name>,<default>)` string. The player uses light DOM, so a site sets the custom properties on the player or any ancestor. Core code (`src/components/`, `src/player.ts`, `src/path-view.ts`) holds no colour, font-family, font-size, font-weight or line-height literal; `test/theme-tokens.test.ts` fails on one. Domain packs can import the same constants (`import { INK, ACCENT } from '.../src/theme.ts'`, or `theme` from `explainer`). The defaults are the look the player has with no theme at all.
+
+| Custom property | Role | Default |
+|---|---|---|
+| `--explainer-ink` | Text and line colour on paper | `#111` |
+| `--explainer-paper` | Stage/page background. `--explainer-bg` is the older name and still works as its fallback | `#fff` |
+| `--explainer-accent` | Emphasis: active list item, byline, button border | `#06c` |
+| `--explainer-highlight` | Highlighter colour (no core component draws it yet) | `#f2ff36` |
+| `--explainer-muted` | Secondary text on paper (not used by core yet) | `#666` |
+| `--explainer-line` | Hairlines and rules on paper (not used by core yet) | `#ddd` |
+| `--explainer-card` | Card laid over a picture (lower third, side panel) | `rgba(12,14,22,.7)` |
+| `--explainer-card-ink` | Text on the card | `#fff` |
+| `--explainer-scrim` | Backdrop of a choice held over footage | `rgba(8,10,18,.72)` |
+| `--explainer-scrim-ink` | Text on the scrim | `#fff` |
+| `--explainer-button` | Choice button face on the scrim (buttons on paper use paper/ink) | `rgba(255,255,255,.94)` |
+| `--explainer-button-ink` | Text on that button | `#111` |
+| `--explainer-caption-ink` | Caption strip text; falls back to `--explainer-ink`, then `#fff` | `#fff` |
+| `--explainer-caption-paper` | Caption strip background; falls back to paper (then `--explainer-bg`), then `#000` | `#000` |
+| `--explainer-path-ink` | Path view text; falls back to `--explainer-ink`, then the inherited colour | `inherit` |
+| `--explainer-font` | Body font family (the path view falls back to the inherited font) | `system-ui,sans-serif` |
+| `--explainer-font-mono` | Monospace family (not used by core yet) | `ui-monospace,monospace` |
+| `--explainer-size-card-title` | Card title, stage-relative | `10cqw` |
+| `--explainer-size-card-sub` | Card subtitle, stage-relative | `7cqw` |
+| `--explainer-size-card-note` | Card byline, stage-relative | `6cqw` |
+| `--explainer-size-panel-heading` | Side panel heading, stage-relative | `9cqw` |
+| `--explainer-size-panel-item` | Side panel list items, stage-relative | `7.5cqw` |
+| `--explainer-size-caption-over` | Caption strip over the picture | `clamp(.8rem,2.1cqw + .3rem,1.4rem)` |
+| `--explainer-size-title` | Full-stage intro title | `2.6rem` |
+| `--explainer-size-heading` | Minimal intro title, choice prompt | `1.6rem` |
+| `--explainer-size-section` | Full-stage list heading | `1.8rem` |
+| `--explainer-size-subtitle` | Intro subtitle | `1.2rem` |
+| `--explainer-size-item` | Full-stage list items | `1.3rem` |
+| `--explainer-size-byline` | Intro byline | `.9rem` |
+| `--explainer-size-caption` | Caption strip below the stage | `1rem` |
+| `--explainer-size-path` | Path view text | `.9em` |
+| `--explainer-weight-strong` | Active list item | `700` |
+| `--explainer-weight-label` | Path view labels | `600` |
+| `--explainer-leading-title` | Card title line height | `1.15` |
+| `--explainer-leading-sub` | Card subtitle line height | `1.3` |
+| `--explainer-leading-caption` | Caption strip line height | `1.35` |
+| `--explainer-leading-path` | Path view line height | `1.5` |
+| `--explainer-safe` | Safe-area inset from the stage edge | `2.5%` |
+| `--explainer-side-width` | Side panel width (clear of a centred face, x 27-70%) | `27%` |
+| `--explainer-lower-width` | Lower-third card width | `28%` |
+
+A site theme is one stylesheet that maps values; it never needs to touch component code:
+```css
+/* site-theme.css, linked by the page that holds the player */
+explainer-player, explainer-path {
+  --explainer-paper: #fbfaf6;
+  --explainer-ink: #1a1a1a;
+  --explainer-accent: #0b5fff;
+  --explainer-highlight: #f2ff36;
+  --explainer-font: "IBM Plex Sans", system-ui, sans-serif;
+  --explainer-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --explainer-card: #fbfaf6;      /* text over video on a paper card, not a dark scrim */
+  --explainer-card-ink: #1a1a1a;
+  --explainer-size-title: 3rem;
+}
+```
+
+Motion is code, because a pure `render` cannot read CSS. `src/motion.ts` holds the named curves (`linear`, `out`, `inOut`, each [0,1] to [0,1]; `ramp` is linear), `fade(o, dy)` and the fade constants (`FADE_OFFSET` 12 px, `FADE_OFFSET_CARD` 10, `FADE_OFFSET_ITEM` 8, `PANEL_OUT_S` and `ITEM_FADE_S` 0.4 s). Components import these; a site cannot override them from CSS.
+
 ## Rendering
 Render an explainer to files offline, frame-exact (not recorded in real time): `src/render-plan.ts` steps the pure clock with a fixed `dt = 1/fps` and returns one `{segmentId, t}` per output frame plus the source cuts; `scripts/render.mjs` paints each frame in headless chromium (`examples/render/index.html`, no media, everything transparent) and encodes with ffmpeg. Needs ffmpeg/ffprobe on the path and playwright (`PLAYWRIGHT=/path/to/playwright/index.mjs`, else `playwright` or the srs-web copy); it starts `vite` itself unless one answers at `--url`.
 
@@ -98,7 +162,7 @@ await import('explainer'); await import('./my-pack.ts');
 player.manifest = m; // <explainer-player> element
 ```
 `crossorigin` on `<explainer-player>` (e.g. `crossorigin="anonymous"`) is copied to the media element when it is created (not observed; set it before the manifest) and `<track>` inherits it. Needed when the VTT is cross-origin (it then needs CORS headers); a same-origin VTT with cross-origin audio works without it.
-Theme: CSS variables on the player or an ancestor, `--explainer-accent`, `--explainer-bg`, `--explainer-ink`, `--explainer-font`.
+Theme: CSS variables on the player or an ancestor; see the Theme section for every token.
 
 ## scrub-root
 `<explainer-player play="scrub" scrub-root="#article">`: progress is the scroll position through that element (0 when its top reaches the viewport top, 1 when its bottom reaches the viewport bottom), so a sticky player inside a tall article is scrubbed by scrolling the article. Without it, the player's own position through the viewport is used.

@@ -1,3 +1,5 @@
+import { FONT_FAMILY, INK } from '../theme.ts';
+
 export type Component = {
   meta: { renders: string; name: string; variants: string[] };
   mount(host: Element, data: Record<string, any>): HTMLElement | SVGElement;
@@ -17,6 +19,6 @@ export function registerComponents(pack: Component[]) {
 }
 export const lookup = (renders: string) => reg.get(renders);
 
-/** Shared inline-style helpers (theme via CSS custom properties). */
-export const FONT = 'font-family:var(--explainer-font,system-ui,sans-serif);color:var(--explainer-ink,#111)';
-export const fade = (o: number, dy = 12) => `opacity:${o.toFixed(3)};transform:translateY(${((1 - o) * dy).toFixed(2)}px)`;
+/** Shared inline-style helpers (theme via CSS custom properties, see `src/theme.ts`). */
+export const FONT = `font-family:${FONT_FAMILY};color:${INK}`;
+export { fade } from '../motion.ts';

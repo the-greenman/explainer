@@ -3,6 +3,7 @@ import { Clock, cueProgress, type Cue, type Manifest } from './clock.ts';
 import { lookup, type Component } from './components/index.ts';
 import { gate, scopeFor, type Store } from './store.ts';
 import { bindPlayMode } from './triggers.ts';
+import { CAPTION_INK, CAPTION_OVER, CAPTION_PAPER, FONT_FAMILY, LEADING_CAPTION, PAPER, SIZE_CAPTION, SIZE_CAPTION_OVER } from './theme.ts';
 
 type Entry = { cue: Cue; comp: Component; node: Element; wrap: HTMLElement; data: Record<string, any>; shown: boolean };
 export type Command = { action: string; to?: string; rate?: number; t?: number; option?: string; depth?: number; hold?: boolean; on?: boolean; var?: string; value?: string };
@@ -73,7 +74,7 @@ export class ExplainerPlayer extends HTMLElement {
     this.style.display = 'block';
     this.stage = document.createElement('div');
     // container-type: components size text and layout in cqw, so a stage looks the same at any width (and in the offline render)
-    this.stage.setAttribute('style', 'position:relative;overflow:hidden;aspect-ratio:16/9;container-type:inline-size;background:var(--explainer-bg,#fff)');
+    this.stage.setAttribute('style', 'position:relative;overflow:hidden;aspect-ratio:16/9;container-type:inline-size;background:' + PAPER);
     this.overlay = document.createElement('div');
     this.overlay.setAttribute('style', 'position:absolute;inset:0');
     this.stage.append(this.overlay);
@@ -226,14 +227,14 @@ export class ExplainerPlayer extends HTMLElement {
   private placeStrip() {
     const el = this.strip;
     if (!el) return;
-    const look = 'box-sizing:border-box;padding:.35em .8em;text-align:center;white-space:pre-line;font:inherit;line-height:1.35;pointer-events:none;'
-      + 'font-family:var(--explainer-font,system-ui,sans-serif);color:var(--explainer-ink,#fff);';
+    const look = `box-sizing:border-box;padding:.35em .8em;text-align:center;white-space:pre-line;font:inherit;line-height:${LEADING_CAPTION};pointer-events:none;`
+      + `font-family:${FONT_FAMILY};color:${CAPTION_INK};`;
     if (this.captionsBelow) {
-      el.setAttribute('style', look + 'display:flex;align-items:center;justify-content:center;min-height:calc(2lh + .7em);font-size:1rem;background:var(--explainer-bg,#000)');
+      el.setAttribute('style', look + `display:flex;align-items:center;justify-content:center;min-height:calc(2lh + .7em);font-size:${SIZE_CAPTION};background:${CAPTION_PAPER}`);
       this.stage.after(el);
     } else {
-      el.setAttribute('style', look + 'position:absolute;left:50%;bottom:3%;transform:translateX(-50%);max-width:80%;font-size:clamp(.8rem,2.1cqw + .3rem,1.4rem);border-radius:6px;'
-        + 'background:color-mix(in srgb,var(--explainer-bg,#000) 80%,transparent)');
+      el.setAttribute('style', look + `position:absolute;left:50%;bottom:3%;transform:translateX(-50%);max-width:80%;font-size:${SIZE_CAPTION_OVER};border-radius:6px;`
+        + `background:${CAPTION_OVER}`);
       this.stage.append(el);
     }
   }
