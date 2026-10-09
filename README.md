@@ -134,6 +134,31 @@ explainer-player, explainer-path {
 
 Motion is code, because a pure `render` cannot read CSS. `src/motion.ts` holds the named curves (`linear`, `out`, `inOut`, each [0,1] to [0,1]; `ramp` is linear), `fade(o, dy)` and the fade constants (`FADE_OFFSET` 12 px, `FADE_OFFSET_CARD` 10, `FADE_OFFSET_ITEM` 8, `PANEL_OUT_S` and `ITEM_FADE_S` 0.4 s). Components import these; a site cannot override them from CSS.
 
+## Styleguide
+`explainer/styleguide` is a harness a site mounts in its own page. It renders every **registered** component and variant (whatever the page imported first) from fixture data. Each card has a scrubber, a "still" button (jumps to `stillP`, the complete frame print and reduced motion show), surface badges and three true-size frames: a 360 px web column, a 640 px 16:9 stage and the same stage at 360 px as a phone embed. There is no transform scaling, so cqw sizing is exercised exactly as in the player. A frame is shown only if `meta.surfaces` declares it (`web` for the column; `video` for the stage and the phone). A registered component with no fixture shows a "no fixture" note.
+
+```js
+// the site's styleguide page, client-side
+import 'explainer';                       // the core first: it defines the elements and registers the core pack
+import './motion/pack.ts';                // the site's own pack: importing it registers its components
+import { mountStyleguide, measureSmallestType } from 'explainer/styleguide';
+import themeCss from './motion/theme.css?raw';
+import { fixtures } from './motion/fixtures.ts';   // { [meta.renders]: { data, items, dur? } }
+
+const unmount = mountStyleguide(document.getElementById('root'), {
+  fixtures,
+  themes: [{ id: 'default', label: 'default' }, { id: 'site', label: 'site', className: 'theme-site', css: themeCss }],
+  intro: rulesPanel,      // optional element or HTML string above the cards
+});
+```
+- **Themes:** the host passes raw stylesheet text. The harness rewrites every `:root` in it to `.<className>` (default `sg-theme-<id>`) and puts that class on the wrapper holding the cards, so a theme applies to the cards only and the switch just toggles the class. Selectors on `html`/`body` are not rewritten. A theme without `css` is the contract defaults. With one theme no switch is shown.
+- **URL:** `?theme=<id>` picks the theme, `?only=<slug or slug__variant>[,...]` filters (substring match; `slug` is `renders` without the `com.semanticops.` prefix, `/` and `@` as `-`). The `only` option overrides the URL.
+- **Smallest stage type:** `measureSmallestType()` renders each video-surface case at its still on an off-screen 1280 px stage inside the active theme wrapper and returns `{ px, at1920, where }` (smallest computed font size, and that x1.5 for a 1920 render), or `null`. It re-runs on a theme switch and fills any `[data-sg-min-size]` element in `intro`, so a rules panel can show it.
+- **Cleanup:** `mountStyleguide` returns a function that removes everything it added. Importing the module has no side effects beyond the core registry.
+- **This repo's page:** `/examples/styleguide/` mounts the harness over the core and `examples/video` packs (fixtures in `examples/styleguide/fixtures.ts`, shared with `test/still.test.ts`; a new component here needs a fixture there) with the contract defaults and a neutral sample theme, `examples/styleguide/paper.css` (a demo of theming, no brand).
+
+Review frames: with `npx vite --port 5199 --strictPort` running, `node examples/styleguide/frames.mjs [outDir] [pageUrl] [--theme=<id>] [--only=...]` writes `<renders-slug>__<variant>__<surface>__p{0,0.5,1,still}.png` (default `examples/styleguide/frames/`, ignored by git; needs the playwright install named in CLAUDE.md, or `PLAYWRIGHT=/path/to/playwright/index.mjs`). `pageUrl` is any page that hosts the harness, e.g. a site's own, so a site reviews its own components and theme this way.
+
 ## Rendering
 Render an explainer to files offline, frame-exact (not recorded in real time): `src/render-plan.ts` steps the pure clock with a fixed `dt = 1/fps` and returns one `{segmentId, t}` per output frame plus the source cuts; `scripts/render.mjs` paints each frame in headless chromium (`examples/render/index.html`, no media, everything transparent) and encodes with ffmpeg. Needs ffmpeg/ffprobe on the path and playwright (`PLAYWRIGHT=/path/to/playwright/index.mjs`, else `playwright` or the srs-web copy); it starts `vite` itself unless one answers at `--url`.
 
@@ -157,7 +182,7 @@ Overlay-only workflow: `node scripts/render.mjs --manifest m.json --mode overlay
 Player API for this: `<explainer-player render>` (set before the manifest) mounts no media and runs no rAF loop; `player.renderFrame(segmentId, t, vars?)` puts the clock there and paints once.
 
 ## Commands
-`npm run dev` (gallery at /demo/; examples at /examples/video/), `npm run build`, `npm test` (includes examples).
+`npm run dev` (gallery at /demo/; examples at /examples/video/ and /examples/styleguide/), `npm run build`, `npm test` (includes examples).
 
 Project context, status and next steps: `CLAUDE.md`. Plan: `docs/plan.md`. Capability findings: `docs/findings.md`.
 

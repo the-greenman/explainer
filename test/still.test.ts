@@ -5,22 +5,14 @@ import { corePack } from '../src/components/index.ts';
 import { registerComponents, registered, stillP, type Component } from '../src/components/index.ts';
 import { stillTime } from '../src/still.ts';
 import type { Cue, Segment } from '../src/clock.ts';
+import { fixtures, NS, DUR } from '../examples/styleguide/fixtures.ts';
 // importing a pack registers it
 import '../examples/video/components.ts';
 
 registerComponents(corePack);
 
 const vars = { name: 'Ada' };
-const NS = 'com.semanticops.explainer';
-type Fx = { data: any; items: any[]; dur?: number };
-const fixtures: Record<string, Fx> = {
-  [`${NS}/intro@1`]: { data: { title: 'T {name}', subtitle: 'S', presenter: 'P' }, items: [] },
-  [`${NS}/numbered-list@1`]: { data: { heading: 'H' }, items: ['one', 'two {name}', { text: 'three' }] },
-  [`${NS}/choice@1`]: { data: { prompt: 'Pick' }, items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] },
-  [`${NS}.example/cycle@1`]: { data: { caption: 'again {name}' }, items: [{ label: 'Debate' }, { label: 'Decide?' }, { label: 'Forget' }, { label: 'Repeat' }] },
-  [`${NS}.example/emphasis@1`]: { data: {}, items: [{ text: 'clear', at: 0.2 }, { text: 'visible', at: 1 }, { text: 'useful {name}', at: 1.8 }] },
-};
-const DUR = 10;
+
 // text that is dimmed on purpose (never faded): the minimum effective opacity allowed per component
 const DIMMED: Record<string, number> = {
   'com.semanticops.explainer/numbered-list@1': 0.6, // inactive items
@@ -60,7 +52,7 @@ test('every component declares non-empty surfaces and has a fixture', () => {
   for (const [r, c] of comps) {
     assert.ok(Array.isArray(c.meta.surfaces) && c.meta.surfaces.length > 0, `${r}: surfaces`);
     for (const s of c.meta.surfaces) assert.ok(s === 'web' || s === 'video', `${r}: surface ${s}`);
-    assert.ok(fixtures[r], `${r}: add a fixture to test/still.test.ts`);
+    assert.ok(fixtures[r], `${r}: add a fixture to examples/styleguide/fixtures.ts`);
   }
 });
 

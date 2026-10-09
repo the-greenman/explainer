@@ -1,0 +1,33 @@
+/* A small neutral sample theme: warm paper, dark ink, one accent, cards on paper. A demo of theming, not any brand.
+   The styleguide harness rewrites :root to the theme's wrapper class, so this applies to the cards only. */
+:root {
+  --explainer-paper: #f6f1e7;
+  --explainer-ink: #2a2622;
+  --explainer-accent: #b4452a;
+  --explainer-highlight: #ffe27a;
+  --explainer-muted: #6f675d;
+  --explainer-line: #d8cfbd;
+  --explainer-font: Georgia, "Times New Roman", serif;
+  --explainer-font-mono: ui-monospace, monospace;
+  /* text over a picture sits on a paper card, not a dark scrim */
+  --explainer-card: rgba(246, 241, 231, .95);
+  --explainer-card-ink: #2a2622;
+  --explainer-scrim: rgba(246, 241, 231, .92);
+  --explainer-scrim-ink: #2a2622;
+  --explainer-button: #2a2622;
+  --explainer-button-ink: #f6f1e7;
+  /* card and panel sizes stay in cqw (relative to the card or panel itself), so they scale with the player */
+  --explainer-size-card-title: 9cqw;
+  --explainer-size-card-sub: 6cqw;
+  --explainer-size-card-note: 5cqw;
+  --explainer-size-panel-heading: 8cqw;
+  --explainer-size-panel-item: 6.5cqw;
+  /* the full-stage sizes default to fixed rem; in cqw they also fit the 360 px phone embed */
+  --explainer-size-title: 7cqw;
+  --explainer-size-heading: 5cqw;
+  --explainer-size-section: 5.5cqw;
+  --explainer-size-subtitle: 3.8cqw;
+  --explainer-size-item: 4cqw;
+  --explainer-size-byline: 3cqw;
+  --explainer-size-caption-over: clamp(.8rem, 2.1cqw + .3rem, 1.4rem);
+}

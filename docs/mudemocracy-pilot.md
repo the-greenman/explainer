@@ -32,14 +32,14 @@
   - **Stage:** safe-area insets, and the side columns that keep overlays clear of the speaker's face (x 27–70 %).
   - **Motion:** named durations and easings. Pure renders need curves as JS functions, so the theme names the curve and the code holds the function.
 - **No literals in core components.** For example, `intro.ts` hard-codes `rgba(12,14,22,.7)` and `#fff` today.
-- **The muDemocracy theme is one file that only maps values:** paper, ink, highlighter `#f2ff36`, IBM Plex Sans and Mono.
+- **The muDemocracy theme is one file in muDemocracy.org `src/motion/` that only maps values:** paper, ink, highlighter `#f2ff36`, IBM Plex Sans and Mono.
 
 ## Packs
 - **Core** (`src/components/`): brand-neutral primitives. The likely additions from the storyboard are a highlighter stroke, a table reveal, an example card and a callout (#317).
-- **muDemocracy pack** (`examples/mudemocracy/`): the theme mapping, domain diagrams (for example the debate cycle that is local to `examples/video/` today) and the manifest. Where it lives long-term is decided in #322.
+- **muDemocracy pack** (`muDemocracy.org/src/motion/`, owner decision 2026-10-09, muDemocracy.org#309; see CLAUDE.md "Engine and site packs"): the theme mapping `tokens.css` onto `--explainer-*`, brand elements such as the logo, decision-record card and debate cycle (the cycle in `examples/video/` is a stand-in), and the manifests. It is not in this repo; the site depends on this repo by git tag.
 
 ## Styleguide (#312, #314)
-- **`/styleguide/` in the gallery** shows every component and variant with a scrubber, in a web column and on the 16:9 stage. It uses the muDemocracy theme, with a switch to the default.
+- **The styleguide is a harness in this repo** (`explainer/styleguide`, #325) that the site mounts in its own page with its pack, fixtures and theme CSS (`muDemocracy.org/src/motion/`). It shows every component and variant with a scrubber, in a web column, on the 16:9 stage and as a phone embed, with a switch between the site theme and the default. This repo's own page uses a neutral sample theme.
 - **A script writes the review frames:** p = 0, 0.5 and 1 on both surfaces. The owner approves components from these frames.
 - **The style rules** cover:
   - colour roles
