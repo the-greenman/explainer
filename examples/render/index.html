@@ -17,6 +17,7 @@
 <div id="frame"><explainer-player render></explainer-player></div>
 <script type="module">
   // Query: manifest=<url> pack=<module url> (repeatable, loaded before the manifest) css=<stylesheet url> (repeatable)
+  //   canvas=WxH (design canvas), scenes=<url> (scene templates)
   // Then window.__ready resolves and window.__frame(segmentId, t, vars) paints one frame. See scripts/render.mjs.
   import '../../src/index.ts';
   const q = new URLSearchParams(location.search);
@@ -28,6 +29,14 @@
     for (const m of q.getAll('pack')) await import(/* @vite-ignore */ m);
     const m = await (await fetch(q.get('manifest'))).json();
     const p = document.querySelector('explainer-player');
+    // design canvas: the frame is that many CSS px and the player uses it (src/design-canvas.ts)
+    const canvas = /^(\d+)x(\d+)$/.exec(q.get('canvas') ?? '');
+    if (canvas) {
+      document.getElementById('frame').style.cssText = `width:${canvas[1]}px;height:${canvas[2]}px`;
+      p.setAttribute('canvas', canvas[0]);
+    }
+    // scene templates (an HTML file of <template data-scene="...">) go inside the player, where scene cues look first
+    if (q.get('scenes')) p.insertAdjacentHTML('beforeend', await (await fetch(q.get('scenes'))).text());
     p.manifest = m;
     await document.fonts.ready;
     // components create their <img> in mount(): wait until every one is decoded so the first screenshot is not blank

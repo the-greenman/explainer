@@ -8,6 +8,7 @@ export const fixtures: Record<string, Fx> = {
   [`${NS}/intro@1`]: { data: { title: 'Decision Recording', subtitle: 'Four questions that make a decision stick', presenter: 'A guide to decision-making' }, items: [] },
   [`${NS}/numbered-list@1`]: { data: { heading: 'Four questions' }, items: ['What was decided?', 'Why?', { text: 'What were the options?' }, 'When to revisit?'] },
   [`${NS}/choice@1`]: { data: { prompt: 'Want to see one filled in?' }, items: [{ id: 'example', label: 'See an example' }, { id: 'watch-outs', label: 'Skip to the watch-outs' }, { id: 'replay', label: 'Replay the four questions' }] },
+  [`${NS}/scene@1`]: { data: { template: 'specimen' }, items: [] },
   [`${NS}.example/cycle@1`]: { data: { caption: 'Round and round' }, items: [{ label: 'Debate' }, { label: 'Decide?' }, { label: 'Forget' }, { label: 'Repeat' }] },
   [`${NS}.example/emphasis@1`]: { data: {}, items: [{ text: 'clear', at: 0.2 }, { text: 'visible', at: 1 }, { text: 'useful', at: 1.8 }] },
 };

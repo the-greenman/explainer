@@ -1,0 +1,42 @@
+/* The site's own CSS for its scenes: neutral, plain. The engine sets --fx-p (and, for the built-in effects, a few properties) on
+   elements that carry data-at; outside a player nothing sets it, so every var(--fx-p, 1) below falls back to 1 and the page is complete. */
+.scene {
+  --ink: #23221f;
+  --accent: #c8553d;
+  --paper: #f6f3ec;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 72px 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: var(--paper);
+  color: var(--ink);
+  font: 28px/1.4 Georgia, 'Times New Roman', serif;
+}
+.scene h1 { margin: 0 0 12px; width: fit-content; font-size: 76px; line-height: 1.1; }
+.scene .lede { margin: 0 0 28px; font-size: 32px; }
+.scene ol { margin: 0 0 28px; padding-left: 1.2em; }
+.scene li { margin: 0 0 10px; }
+.scene hr { width: 100%; height: 6px; margin: 0 0 28px; border: 0; background: var(--ink); }
+.scene .note { margin: 0; font-size: 30px; }
+
+/* A site-defined effect: data-fx="hl-draw" is not built in, so the engine sets only --fx-p and this rule draws the underline. */
+.hl[data-fx="hl-draw"] {
+  background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 100%;
+  background-size: calc(var(--fx-p, 1) * 100%) 0.18em;
+  padding-bottom: 0.08em;
+}
+
+/* The portrait canvas (720x900) restyles the same markup. */
+[data-canvas="720x900"] .scene { padding: 64px 52px; font-size: 30px; }
+[data-canvas="720x900"] .scene h1 { font-size: 64px; }
+[data-canvas="720x900"] .scene .lede { font-size: 30px; }
+[data-canvas="720x900"] .scene li { margin-bottom: 18px; }
+
+/* The scene before the player loads, laid out as page copy */
+explainer-player > .scene { height: auto; min-height: 14rem; padding: 2rem; font-size: 1.15rem; }
+explainer-player > .scene h1 { font-size: 2.4rem; }
+explainer-player > .scene .lede { font-size: 1.2rem; }
+explainer-player > .scene .note { font-size: 1.1rem; }

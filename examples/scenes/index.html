@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scenes example</title>
+<link rel="stylesheet" href="scenes.css">
+<style>
+  body { margin: 1rem auto; padding: 0 1rem; max-width: 62rem; font: 16px system-ui, sans-serif; }
+  .bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .75rem 0; }
+  input[type=range] { flex: 1; min-width: 10rem; }
+  button { font: inherit; }
+  code { font-size: .9em; }
+</style>
+</head>
+<body>
+<h1>Scenes</h1>
+<p>The player below is the page performed: its scenes are this page's own markup and CSS (<code>scenes.css</code>), revealed by motion.
+  Before play it shows the first scene complete (the segment's <code>still</code>), which is also the markup a page without JavaScript shows. Narrow the window
+  below 600 px to switch to the portrait canvas.</p>
+
+<!-- poster="still": the first paint is the first segment at its still time. The children other than <template> and <script> are the
+     static poster: kept in the DOM, hidden once the player has painted. -->
+<explainer-player id="scenes" canvas="1280x720 720x900@<600" poster="still">
+  <section class="scene">
+    <h1>Four questions</h1>
+    <p class="lede"><span class="hl" data-fx="hl-draw">Make a decision stick.</span></p>
+    <ol><li>What was decided?</li><li>Why?</li><li>What were the options?</li></ol>
+    <hr>
+    <p class="note">Write them down while everyone is in the room.</p>
+  </section>
+
+  <template data-scene="intro">
+    <section class="scene">
+      <h1 data-at="0.3" data-for="1" data-fx="write">Four questions</h1>
+      <p class="lede" data-at="1.2" data-for="0.6" data-fx="rise"><span class="hl" data-at="1.8" data-for="1" data-fx="hl-draw">Make a decision stick.</span></p>
+      <ol>
+        <li data-at="2.6" data-for="0.5" data-fx="rise">What was decided?</li>
+        <li data-at="3.2" data-for="0.5" data-fx="rise">Why?</li>
+        <li data-at="3.8" data-for="0.5" data-fx="rise">What were the options?</li>
+      </ol>
+      <hr data-at="4.6" data-for="0.8" data-fx="wipe">
+      <p class="note" data-at="5.2" data-for="0.6" data-fx="fade">Write them down while everyone is in the room.</p>
+    </section>
+  </template>
+
+  <template data-scene="revisit">
+    <section class="scene">
+      <h1 data-at="0.2" data-for="0.8" data-fx="write">Then revisit</h1>
+      <p class="lede" data-at="1" data-for="0.6" data-fx="fade">A decision with no review date is a decision nobody owns.</p>
+      <p class="note" data-at="2" data-for="0.6" data-fx="rise">Put the date in the record.</p>
+    </section>
+  </template>
+
+  <script type="application/json" data-manifest>
+  {
+    "id": "scenes-example",
+    "segments": [{ "id": "s", "kind": "none", "out": 12, "still": 5.8 }],
+    "cues": [
+      { "id": "intro", "segment": "s", "start": 0, "end": 7, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "intro" } },
+      { "id": "revisit", "segment": "s", "start": 6, "end": 12, "renders": "com.semanticops.explainer/scene@1",
+        "data": { "template": "revisit", "transition": { "in": "fade", "dur": 0.8 } } }
+    ]
+  }
+  </script>
+</explainer-player>
+
+<div class="bar">
+  <button data-explainer-action="play">Play</button>
+  <button data-explainer-action="pause">Pause</button>
+  <button data-explainer-action="rate" data-explainer-value="-1">Reverse</button>
+  <input type="range" min="0" max="12" step="0.01" value="0" data-explainer-action="seek" aria-label="Scrub">
+</div>
+
+<script type="module" src="../../src/index.ts"></script>
+</body>
+</html>
