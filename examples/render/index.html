@@ -30,6 +30,8 @@
     const p = document.querySelector('explainer-player');
     p.manifest = m;
     await document.fonts.ready;
+    // components create their <img> in mount(): wait until every one is decoded so the first screenshot is not blank
+    await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
     window.__frame = (seg, t, vars) => p.renderFrame(seg, t, vars);
     // the theme's background as #rrggbb (or '' if none): the composite puts it under segments without a picture
     const probe = document.createElement('i');

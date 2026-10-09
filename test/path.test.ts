@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Clock, type Manifest } from '../src/clock.ts';
+import { Clock, routeSpans, type Manifest } from '../src/clock.ts';
 import { fmtTime, pathSteps } from '../src/path.ts';
 
 const m = (): Manifest => ({
@@ -124,11 +124,33 @@ test('fmtTime', () => {
   assert.deepEqual([0, 9.9, 65, 600].map(fmtTime), ['0:00', '0:09', '1:05', '10:00']);
 });
 
-test('navigation across segments (no history pushed): the span is labelled by the segment it ended in', () => {
+test('navigation along the default order records the hops (a step per segment)', () => {
   const c = new Clock(m());
   c.jumpTo('b');
   c.tick(0);
-  assert.deepEqual(brief(c), ['b 0:00-0:00']);
+  assert.deepEqual(brief(c), ['Alpha 0:00-0:20', 'b 0:00-0:00']);
+});
+
+test('an off-route position (history unchanged) is labelled by the segment it is in, from 0', () => {
+  const mm = m();
+  mm.segments.push({ id: 'side', kind: 'none', out: 5, ends: 'stop' });
+  mm.segments[1].ends = 'stop';
+  const c = new Clock(mm);
+  c.jumpTo('side'); // b stops: side is only reachable by a branch
+  c.tick(0);
+  assert.equal(c.history.length, 0);
+  assert.deepEqual(brief(c), ['side 0:00-0:00']);
+});
+
+test('pathSteps spans are the shared routeSpans', () => {
+  const c = new Clock(m());
+  c.play();
+  c.tick(25);
+  c.choose('o2');
+  c.tick(3);
+  const sp = routeSpans(c.manifest, c.history, { segmentId: c.segmentId, t: c.t });
+  assert.deepEqual(steps(c).filter((s) => s.kind === 'span').map((s) => s.kind === 'span' && [s.segment, s.from, s.to, s.depth]),
+    sp.map((x) => [x.segment, x.from, x.to, x.depth]));
 });
 
 test('an auto-taken option is a choice step with taken and auto', () => {
@@ -148,4 +170,25 @@ test('an auto-taken option is a choice step with taken and auto', () => {
     { id: 'o3', label: 'o3', taken: false },
   ]);
   assert.equal(s[2].kind === 'span' && s[2].label, 'Midpoint');
+});
+
+test('tarot manifest: jumping around never leaves a stale or lost crumb', async () => {
+  const { readFileSync } = await import('node:fs');
+  const tm = JSON.parse(readFileSync(new URL('../examples/tarot/manifest.json', import.meta.url), 'utf8')) as Manifest;
+  const c = new Clock(tm);
+  const crumbs = () => steps(c).filter((s) => s.kind === 'span').map((s) => s.label).join(' › ');
+  c.play();
+  c.tick(45); // intro ends: continues into the Fool
+  assert.equal(crumbs(), 'Intro › The Fool');
+  c.jumpTo('magician');
+  c.tick(10);
+  assert.equal(crumbs(), 'Intro › The Fool › The Magician');
+  c.jumpTo('card-3');
+  assert.equal(crumbs(), 'Intro › The Fool › The Magician › The High Priestess › The Empress');
+  c.jumpTo('card-0');
+  assert.equal(crumbs(), 'Intro');
+  c.play();
+  c.tick(3.6);
+  c.tick(0);
+  assert.equal(crumbs(), 'Intro › The Fool');
 });

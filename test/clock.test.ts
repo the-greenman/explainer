@@ -86,28 +86,33 @@ test('back() pops the last path entry (here a default continuation) and goes the
   assert.equal(c.segmentId, 'a');
 });
 
-test('navigation (jumpTo, markers) never pushes history', () => {
+test('navigation forward along the default order pushes the hops playing would have recorded', () => {
   const c = new Clock(m());
   c.seek(3);
-  c.jumpTo('c');
-  c.jumpTo('mk');
-  c.jumpTo('a');
+  assert.equal(c.history.length, 0);
+  c.jumpTo('mk'); // a -> b -> c@2 (b is 5 long, c has no landing marker: lands at c@0 and the marker is later in c)
+  assert.deepEqual(c.history, [{ segmentId: 'a', t: 10, to: 'b', toT: 0 }, { segmentId: 'b', t: 5, to: 'c', toT: 0 }]);
+  assert.deepEqual([c.segmentId, c.t], ['c', 2]);
+  c.jumpTo('a'); // back onto the route: unwinds
   assert.equal(c.history.length, 0);
   c.back(); // nothing to pop
   assert.equal(c.segmentId, 'a');
 });
 
-test('scroll-style repeated jumps leave history unchanged', () => {
+test('scroll-style down then up leaves history as it was', () => {
   const c = new Clock(m());
-  c.play();
-  c.tick(11); // held at 10: no entry
   c.manifest.cues = [];
   c.play();
-  c.tick(0.1); // a -> b by continuation: one entry
+  c.tick(10.1); // a -> b by continuation: one entry
   const before = JSON.stringify(c.history);
-  for (const id of ['mk', 'b', 'a', 'mk', 'b', 'a', 'd']) c.jumpTo(id);
+  for (const id of ['mk', 'b', 'mk', 'b']) c.jumpTo(id); // down to c and up again, ending where it began
   assert.equal(JSON.stringify(c.history), before);
   assert.equal(c.history.length, 1);
+  c.jumpTo('a');
+  assert.equal(c.history.length, 0);
+  for (const id of ['mk', 'b', 'a', 'mk', 'b', 'a']) c.jumpTo(id);
+  assert.deepEqual(c.history, []);
+  assert.deepEqual([c.segmentId, c.t], ['a', 0]);
 });
 
 test('marker jump inside a segment, then reverse past its start, lands on the predecessor end (not the pre-jump position)', () => {
@@ -415,4 +420,146 @@ test('jump hook fires for same-segment and cross-segment auto branches, not for 
   c.tick(9.5);
   c.choose('mid');
   assert.equal(n, 0);
+});
+
+// ---- navigation keeps history equal to the route from the start to here ----
+const route = (extra: Partial<Manifest> = {}): Manifest => ({
+  id: 'r',
+  segments: [
+    { id: 'in', kind: 'none', out: 10 }, { id: 'f', kind: 'none', out: 20 }, { id: 'g', kind: 'none', out: 20 },
+    { id: 'h', kind: 'none', out: 20 }, { id: 'x', kind: 'none', out: 10, ends: 'stop' },
+  ],
+  markers: [
+    { id: 'm-in', segment: 'in', t: 8 }, { id: 'm-f', segment: 'f', t: 5 }, { id: 'm-g', segment: 'g', t: 4 },
+    { id: 'm-h', segment: 'h', t: 3 }, { id: 'm-x', segment: 'x', t: 0 }, { id: 'f2', segment: 'f', t: 12 },
+  ],
+  cues: [],
+  ...extra,
+});
+const at = (c: Clock) => [c.segmentId, c.t, c.history.map((e) => `${e.segmentId}>${e.to}`).join(' ')];
+
+test('jump back onto the route truncates; forward pushes the hops; hops', () => {
+  const c = new Clock(route());
+  c.play();
+  c.tick(10); c.tick(7); // in -> f at 7
+  assert.deepEqual(at(c), ['f', 7, 'in>f']);
+  c.jumpTo('m-g'); // f -> g@4: hop f>g
+  assert.deepEqual(at(c), ['g', 4, 'in>f f>g']);
+  c.jumpTo('m-h'); // g>h
+  assert.deepEqual(at(c), ['h', 3, 'in>f f>g g>h']);
+  c.jumpTo('m-in'); // back to the first span
+  assert.deepEqual(at(c), ['in', 8, '']);
+  c.jumpTo('m-f'); // forward again: in>f
+  assert.deepEqual(at(c), ['f', 5, 'in>f']);
+});
+
+test('a loop: the most recent matching span wins', () => {
+  const mm = route();
+  // f -> f@2 branch (like "again"): route in>f, f>f(2)
+  mm.cues = [{ id: 'ch', segment: 'f', start: 18, end: 20, renders: 'x', hold: true, items: [{ id: 'again', goes_to: 'f2' }] }];
+  const c = new Clock(mm);
+  c.play();
+  c.tick(10); c.tick(21); // hold at f:20
+  c.choose('again'); // f@12
+  c.tick(3); // f 15
+  assert.deepEqual(at(c), ['f', 15, 'in>f f>f']);
+  c.jumpTo('m-f'); // f@5: only the first f span (0..20) covers it
+  assert.deepEqual(at(c), ['f', 5, 'in>f']);
+  // re-loop, then a target covered by both spans (f@13): the later span wins
+  c.tick(15); c.choose('again'); c.tick(3);
+  c.manifest.markers!.push({ id: 'f13', segment: 'f', t: 13 });
+  c.jumpTo('f13');
+  assert.deepEqual(at(c), ['f', 13, 'in>f f>f']);
+});
+
+test('after a choice branch: a marker inside the branch stays in it; before the choice point unwinds it', () => {
+  const mm = route();
+  mm.cues = [{ id: 'ch', segment: 'f', start: 18, end: 20, renders: 'x', hold: true, items: [{ id: 'togo', goes_to: 'x' }] }];
+  mm.markers!.push({ id: 'x5', segment: 'x', t: 5 });
+  const c = new Clock(mm);
+  c.play();
+  c.tick(10); c.tick(21);
+  c.choose('togo'); // branch to x@0
+  c.tick(2);
+  c.jumpTo('x5');
+  assert.deepEqual(at(c), ['x', 5, 'in>f f>x']);
+  assert.equal(c.history[1].option, 'togo');
+  c.jumpTo('m-f'); // before the choice point: unwinds the branch
+  assert.deepEqual(at(c), ['f', 5, 'in>f']);
+});
+
+test('seek to before a mid-segment branch landing unwinds it (earlier span of the same segment)', () => {
+  const mm = route();
+  mm.cues = [{ id: 'ch', segment: 'f', start: 18, end: 20, renders: 'x', hold: true, items: [{ id: 'to', goes_to: 'm-g' }, { id: 'again', goes_to: 'f2' }] }];
+  const c = new Clock(mm);
+  c.play();
+  c.tick(10); c.tick(21);
+  c.choose('again'); // f@20 -> f@12
+  c.tick(2);
+  assert.deepEqual(at(c), ['f', 14, 'in>f f>f']);
+  c.seek(10); // before the landing at 12: sits on the first f span
+  assert.deepEqual(at(c), ['f', 10, 'in>f']);
+  c.seek(18); // later in the same span: just a move
+  assert.deepEqual(at(c), ['f', 18, 'in>f']);
+  c.seek(0);
+  assert.deepEqual(at(c), ['f', 0, 'in>f']);
+  c.seek(0.5);
+  c.seek(0);
+  c.jumpTo('start-missing'); // unknown id: no-op
+  assert.deepEqual(at(c), ['f', 0, 'in>f']);
+});
+
+test('forward navigation then reverse goes back through the recorded hops', () => {
+  const c = new Clock(route());
+  c.jumpTo('m-h'); // in>f f>g g>h
+  assert.deepEqual(at(c), ['h', 3, 'in>f f>g g>h']);
+  c.setRate(-1);
+  c.play();
+  c.tick(3.5); // past h's start: back to the end of g
+  assert.deepEqual(at(c), ['g', 20, 'in>f f>g']);
+  c.tick(20);
+  c.tick(0.5); // and g's start: end of f
+  assert.deepEqual(at(c), ['f', 20, 'in>f']);
+});
+
+test('an off-route jump leaves history unchanged (branch-only segment)', () => {
+  const mm = route();
+  mm.segments.splice(1, 0, { id: 'side', kind: 'none', out: 5, next: 'f' });
+  mm.segments[0].next = 'f'; // side is not reachable by default from anywhere
+  const c = new Clock(mm);
+  c.jumpTo('m-g');
+  const before = JSON.stringify(c.history);
+  c.jumpTo('side');
+  assert.equal(JSON.stringify(c.history), before);
+  assert.deepEqual([c.segmentId, c.t], ['side', 0]);
+  c.jumpTo('side'); // again, still a move
+  assert.equal(JSON.stringify(c.history), before);
+});
+
+test("ends:'stop' blocks the default chain: a segment past it is off-route", () => {
+  const c = new Clock(route());
+  c.jumpTo('m-h');
+  c.jumpTo('m-x'); // h -> x by order, x is reachable (x itself stops after)
+  assert.equal(c.history.at(-1)!.to, 'x');
+  const mm = route();
+  mm.segments[1].ends = 'stop'; // f stops: g, h, x are not reachable from f
+  const d = new Clock(mm);
+  d.jumpTo('m-f');
+  const before = JSON.stringify(d.history);
+  d.jumpTo('m-g');
+  assert.equal(JSON.stringify(d.history), before);
+  assert.deepEqual([d.segmentId, d.t], ['g', 4]);
+});
+
+test('a cycle in the default chain terminates; reaching the current segment again pushes the lap', () => {
+  const mm = route();
+  mm.segments[2].next = 'f'; // f -> g -> f ...
+  mm.segments[1].next = undefined;
+  const c = new Clock(mm);
+  c.jumpTo('m-f'); // in>f, now at f@5
+  c.jumpTo('f'); // f@0 : before... f span covers 0..5? from 0 -> on the route
+  assert.equal(c.history.length, 1);
+  c.jumpTo('m-h'); // h is unreachable: f -> g -> f (seen) stops
+  assert.equal(c.history.length, 1);
+  assert.equal(c.segmentId, 'h');
 });

@@ -19,6 +19,34 @@ export const cueProgress = (cue: { start: number; end: number }, t: number) => c
 /** 0..1 ramp of p between a and b */
 export const ramp = (p: number, a: number, b: number) => clamp01((p - a) / (b - a));
 
+/** One stretch of the route: played in `segment` from `from` to `to`. `depth` is the history length to unwind to; `branched`: it began at a choice branch. */
+export type RouteSpan = { segment: string; from: number; to: number; depth: number; branched: boolean };
+
+/**
+ * The route from the start to `pos` as spans, one per history entry plus the current one (always last, ending at pos.t).
+ * Shared by the clock (navigation) and the path view, so they cannot disagree.
+ * Span k runs in the segment entry k left, from where entry k-1 landed (0 for the first). If navigation left the route
+ * (rare, see Clock.navigate) a span's segment can differ from where the previous entry landed: it then runs from 0.
+ */
+export function routeSpans(manifest: Manifest, history: Entry[], pos: Pos): RouteSpan[] {
+  const spans: RouteSpan[] = [];
+  let seg = manifest.segments[0].id;
+  let from = 0;
+  let branched = false;
+  const add = (segment: string, to: number, depth: number) => {
+    if (segment !== seg) { seg = segment; from = 0; branched = false; }
+    spans.push({ segment, from, to, depth, branched });
+  };
+  history.forEach((e, i) => {
+    add(e.segmentId, e.t, i);
+    seg = e.to;
+    from = e.toT;
+    branched = !!e.option;
+  });
+  add(pos.segmentId, pos.t, history.length);
+  return spans;
+}
+
 export class Clock {
   segmentId: string;
   t = 0;
@@ -43,7 +71,7 @@ export class Clock {
   play() { this.holding = null; this.playing = true; }
   pause() { this.playing = false; }
   setRate(r: number) { if (r !== 0) this.rate = r; }
-  seek(t: number) { this.holding = null; this.t = Math.min(this.length, Math.max(0, t)); }
+  seek(t: number) { this.navigate({ segmentId: this.segmentId, t: Math.min(this.length, Math.max(0, t)) }); }
   tick(dt: number) { if (this.playing) this.advance(this.t + dt * this.rate); }
   /** media drives the clock */
   setTime(t: number) { this.advance(t); }
@@ -60,10 +88,53 @@ export class Clock {
     }
   }
 
-  /** Navigation (markers, prev/next, scroll sections): moves, never touches history. */
+  /** Navigation (markers, prev/next, scroll sections, the jump command): see navigate(). */
   jumpTo(id: string) {
     const to = this.resolve(id);
-    if (to) this.goto(to);
+    if (to) this.navigate(to);
+  }
+
+  /**
+   * Navigation (jumpTo and seek) keeps history equal to the route from the start to where you are:
+   * 1. Back onto the route: the target lies on a span of the route (same segment, from <= t <= end; the current span
+   *    reaches any later t, so a forward move in it is just a move). The most recent matching span wins (loops).
+   *    History is cut back to that span's depth, the same unwinding reverse does.
+   * 2. Forward along the default order (`next`/array order, as finishSegment): the continuation entries are pushed
+   *    for each hop, exactly what playing there would have recorded.
+   * 3. Otherwise (a branch-only segment, or before a landing marker nothing leads past) go there and leave history
+   *    as it is. That is rare: navigation targets are normally markers along the story.
+   * Navigation never adds what playing would not have: scrolling down then up leaves history as it was.
+   */
+  private navigate(to: Pos) {
+    const spans = routeSpans(this.manifest, this.history, { segmentId: this.segmentId, t: this.t });
+    for (let k = spans.length - 1; k >= 0; k--) {
+      const sp = spans[k];
+      if (sp.segment === to.segmentId && sp.from <= to.t && (k === spans.length - 1 || to.t <= sp.to)) {
+        this.history.length = sp.depth;
+        return this.goto(to);
+      }
+    }
+    const hops = this.defaultHops(to);
+    if (hops) this.history.push(...hops);
+    this.goto(to);
+  }
+
+  /** Continuation entries from here to `to` by default order; undefined if it is not reachable that way (stops at ends:'stop', cycle-safe). */
+  private defaultHops(to: Pos): Entry[] | undefined {
+    const list = this.manifest.segments;
+    const hops: Entry[] = [];
+    const seen = new Set<string>();
+    let s = this.segment;
+    while (!seen.has(s.id)) {
+      seen.add(s.id);
+      const nextId = s.next === undefined ? list[list.indexOf(s) + 1]?.id : s.next;
+      const land = s.ends === 'stop' || !nextId ? undefined : this.resolve(nextId);
+      if (!land) return undefined;
+      hops.push({ segmentId: s.id, t: s.out - (s.in ?? 0), to: land.segmentId, toT: land.t });
+      if (land.segmentId === to.segmentId) return to.t >= land.t ? hops : undefined;
+      s = list.find((x) => x.id === land.segmentId)!;
+    }
+    return undefined;
   }
 
   /** Step back along the path taken: pop the last entry and go there; a choice is shown again (held). */

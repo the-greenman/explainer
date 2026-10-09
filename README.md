@@ -7,7 +7,7 @@ The player owns a virtual clock `{segmentId, t, rate, playing}` (`t` in seconds 
 - Forward with media: media plays natively, the clock *reads* `currentTime`.
 - Reverse / scrub / no media: media is paused and muted, the clock advances itself and *writes* `currentTime`.
 
-A segment graph with a history of the *path taken*. Only default continuation and choices (`goes_to`) push an entry `{segmentId, t, to, hold?}`; navigation (`jumpTo`, markers, prev/next, scroll sections, the `jump` command, `seek` with `to`) never does. Reversing unwinds a branch when it crosses where that branch landed (any time within the segment; below 0 it also pops a branch into the segment); with none, it goes to the end of the segment that continues into it (`next` or array order); with none, it stops at 0. `back()` pops the last entry and goes there; if it was left from a held choice, the choice is shown again (paused, keys 1-n work).
+A segment graph with a history of the *path taken*. History is always the route from the start to where you are. Default continuation and choices (`goes_to`) push an entry `{segmentId, t, to, hold?}`; navigation (`jumpTo`, markers, prev/next, scroll sections, the `jump` command, and `seek` scrubbing) keeps that true: a target on an earlier stretch of the route cuts history back to it (including before a choice, which unwinds the branch), a target further along the default order pushes the continuation entries playing there would have, and only a target the default order cannot reach (a branch-only segment) leaves history as it is. Reversing unwinds a branch when it crosses where that branch landed (any time within the segment; below 0 it also pops a branch into the segment); with none, it goes to the end of the segment that continues into it (`next` or array order); with none, it stops at 0. `back()` pops the last entry and goes there; if it was left from a held choice, the choice is shown again (paused, keys 1-n work).
 
 Segments of one `src` are `in`/`out` cuts: compile an explainer's media to one file where possible, and crossing a cut does not reload or re-seek.
 
@@ -22,8 +22,8 @@ Schema: `schema/explainer.schema.json`.
 Choice options (`items` of a choice cue): `{id, label, goes_to?, sets_variable?, sets_value?, default?}`. For `kind: none`, `out - in` is the duration.
 
 ## Commands and events
-Public methods: `play pause seek(t) setRate(r) jumpTo(id) back choose(optionId) rewind(depth, atChoice?)` (negative rate = reverse). `jumpTo` is navigation and does not touch history; `choose` with `goes_to` is a branch and does.
-Dispatch `explainer:command` with `detail: {action: play|pause|seek|rate|jump|back|rewind|choose|playthrough|set, to?, rate?, t?, option?, depth?, hold?, on?, var?, value?, target?}` on a player or the document (document: the first player, or those matching `detail.target`; `rate` also starts playback).
+Public methods: `play pause seek(t) setRate(r) jumpTo(id) back choose(optionId) rewind(depth, atChoice?)` (negative rate = reverse). `jumpTo` (and `seek`) is navigation: it cuts history back or pushes the default continuations so history stays the route to here, and never adds anything playing would not have; `choose` with `goes_to` is a branch and does.
+Dispatch `explainer:command` with `detail: {action: play|pause|seek|rate|jump|back|rewind|choose|playthrough|captions|set, to?, rate?, t?, option?, depth?, hold?, on?, var?, value?, target?}` on a player or the document (document: the first player, or those matching `detail.target`; `rate` also starts playback).
 Buttons: `[data-explainer-action="play|pause|seek|rate|jump|back|playthrough"]` with `data-explainer-to` / `data-explainer-value`, optional `data-explainer-target="selector"`. Scroll sections: `[data-explainer-seek="markerId"]`.
 Emitted (bubbling): `explainer:segment`, `explainer:cueenter`, `explainer:cueexit`, `explainer:choice`, `explainer:path` (history length, segment or held choice changed; `detail: {depth, segment, holding}`).
 
@@ -43,7 +43,10 @@ Mark one option of a choice cue `default: true` and an explainer can play straig
 - Clicking a past span rewinds to where it began; clicking a choice rewinds to it, held, like `back()` (`player.rewind(depth, atChoice)` / `explainer:command {action:'rewind', depth, hold}`). Untaken options and the current step are not buttons.
 - Labels: the marker label where a branch landed, else the segment `title`, else its id. Times are segment-relative.
 - Themed with `--explainer-ink` (override just here with `--explainer-path-ink`), `--explainer-accent`, `--explainer-font`. Only the "now" time updates per frame.
-- Limits: navigation (markers, scroll) never enters history, so a span that was navigated across segments is labelled by the segment it ended in, and rewinding to the first span always goes to the first segment's start.
+- Limits: the spans come from `routeSpans` in `src/clock.ts`, shared with the clock. Only a jump to a branch-only segment (rare) leaves the route; that span is then labelled by the segment it is in, from 0, and rewinding to the first span always goes to the first segment's start.
+
+## Captions
+Video: the `captions` WebVTT of a segment is a native `<track>` (browser-rendered). Audio has no native display, so the player renders the cue text itself into a caption strip (`div.explainer-captions`, bottom-centred over the stage and above the overlay, `pointer-events:none`, themed with `--explainer-ink`, `--explainer-bg`, `--explainer-font`). The track is loaded with mode `hidden`; each paint the strip shows the cue active at the media time `in + clock.t`, found by time from `track.cues` (`cueTextAt` in `src/captions.ts`), never from `cuechange`, so it is right in reverse and after a scrub. `textContent` only. Hide it with `captions="off"` on `<explainer-player>` (observed), `player.captionsOn = false`, or `explainer:command {action:'captions', on?}` (no `on` toggles). It is not created in `render` mode (the offline render keeps `captions.vtt` as a soft track).
 
 ## Play modes
 `<explainer-player play="manual|enter|scrub">` - manual (default): commands only; enter: plays when scrolled into view, rewinds when scrolled back out below; scrub: scroll position maps to `t` over the current segment.
@@ -84,7 +87,7 @@ Overlay-only workflow: `node scripts/render.mjs --manifest m.json --mode overlay
 Player API for this: `<explainer-player render>` (set before the manifest) mounts no media and runs no rAF loop; `player.renderFrame(segmentId, t, vars?)` puts the clock there and paints once.
 
 ## Commands
-`npm run dev` (gallery at /demo/; examples at /examples/creation/ and /examples/equilibrium/), `npm run build`, `npm test` (includes examples).
+`npm run dev` (gallery at /demo/; examples at /examples/creation/, /examples/equilibrium/, /examples/video/ and /examples/tarot/), `npm run build`, `npm test` (includes examples).
 
 Project context, status and next steps: `CLAUDE.md`. Plan: `docs/plan.md`. Capability findings: `docs/findings.md`.
 

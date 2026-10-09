@@ -1,3 +1,4 @@
+import { cueTextAt } from './captions.ts';
 import { Clock, cueProgress, type Cue, type Manifest } from './clock.ts';
 import { lookup, type Component } from './components/index.ts';
 import { gate, scopeFor, type Store } from './store.ts';
@@ -20,6 +21,8 @@ export class ExplainerPlayer extends HTMLElement {
   private cleanup: (() => void)[] = [];
   private reduced = false;
   private sig = '';
+  private strip: HTMLElement | null = null;
+  private stripText = '';
 
   set manifest(m: Manifest) { this.pending = m; if (this.isConnected) this.init(m); }
   get manifest() { return this.clock.manifest; }
@@ -30,8 +33,15 @@ export class ExplainerPlayer extends HTMLElement {
     if (this.pending && this.isConnected) this.init(this.pending);
   }
 
-  static observedAttributes = ['playthrough'];
-  attributeChangedCallback() { if (this.clock) this.applyPlaythrough(this.hasAttribute('playthrough')); }
+  static observedAttributes = ['playthrough', 'captions'];
+  attributeChangedCallback(name: string) {
+    if (!this.clock) return;
+    if (name === 'playthrough') this.applyPlaythrough(this.hasAttribute('playthrough'));
+    else this.paintCaption();
+  }
+  /** `captions="off"` hides the caption strip of audio segments (video keeps its native track). */
+  get captionsOn() { return this.getAttribute('captions') !== 'off'; }
+  set captionsOn(on: boolean) { if (on) this.removeAttribute('captions'); else this.setAttribute('captions', 'off'); }
   get playthrough() { return this.hasAttribute('playthrough'); }
   set playthrough(on: boolean) { this.toggleAttribute('playthrough', !!on); }
 
@@ -51,6 +61,8 @@ export class ExplainerPlayer extends HTMLElement {
     this.replaceChildren();
     this.media = null;
     this.curSrc = '';
+    this.strip = null;
+    this.stripText = '';
   }
 
   private init(m: Manifest) {
@@ -59,10 +71,21 @@ export class ExplainerPlayer extends HTMLElement {
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.style.display = 'block';
     this.stage = document.createElement('div');
-    this.stage.setAttribute('style', 'position:relative;overflow:hidden;aspect-ratio:16/9;background:var(--explainer-bg,#fff)');
+    // container-type: components size text and layout in cqw, so a stage looks the same at any width (and in the offline render)
+    this.stage.setAttribute('style', 'position:relative;overflow:hidden;aspect-ratio:16/9;container-type:inline-size;background:var(--explainer-bg,#fff)');
     this.overlay = document.createElement('div');
     this.overlay.setAttribute('style', 'position:absolute;inset:0');
     this.stage.append(this.overlay);
+    if (!this.hasAttribute('render')) {
+      // caption strip for audio (an <audio> has no native display): above the overlay, never takes the pointer
+      this.strip = document.createElement('div');
+      this.strip.className = 'explainer-captions';
+      this.strip.hidden = true;
+      this.strip.setAttribute('aria-live', 'off');
+      this.strip.setAttribute('style', 'position:absolute;left:50%;bottom:3%;transform:translateX(-50%);max-width:80%;box-sizing:border-box;padding:.35em .8em;text-align:center;white-space:pre-line;font:inherit;font-size:clamp(.8rem,2.1cqw + .3rem,1.4rem);line-height:1.35;border-radius:6px;pointer-events:none;'
+        + 'font-family:var(--explainer-font,system-ui,sans-serif);color:var(--explainer-ink,#fff);background:color-mix(in srgb,var(--explainer-bg,#000) 80%,transparent)');
+      this.stage.append(this.strip);
+    }
     this.append(this.stage);
 
     this.clock = new Clock(m, {
@@ -144,8 +167,9 @@ export class ExplainerPlayer extends HTMLElement {
       this.media.replaceChildren();
       if (s.captions) {
         const tr = document.createElement('track');
-        Object.assign(tr, { kind: 'captions', src: s.captions, default: true });
+        Object.assign(tr, { kind: 'captions', src: s.captions, default: s.kind !== 'audio' });
         this.media.append(tr);
+        if (s.kind === 'audio') tr.track.mode = 'hidden'; // loaded, never displayed natively: paintCaption() reads track.cues
       }
     }
     // same file and already at the new segment's start (an adjacent cut): don't re-seek, it would snap back and stall
@@ -186,12 +210,23 @@ export class ExplainerPlayer extends HTMLElement {
     const base = c.segment.in ?? 0;
     if (c.playing) {
       if (m && c.rate > 0) c.setTime(m.ended ? c.length : Math.max(0, m.currentTime - base)); // media drives; a file shorter than `out` ends the segment
-      else { c.tick(dt); if (m) m.currentTime = base + c.t; } // clock drives, media follows
+      else { c.tick(dt); if (m) m.currentTime = (c.segment.in ?? 0) + c.t; } // clock drives, media follows (segment re-read: the tick may have crossed a cut, e.g. in reverse)
     } else if (m && c.holding?.loop_from != null && m.currentTime >= base + c.holding.end) {
       m.currentTime = base + c.holding.loop_from;
     }
     this.paint();
+    this.paintCaption();
     this.pathChanged();
+  }
+
+  /** Caption strip: the cue active at the media time (`in + t`), found by time from the hidden track so it is right in reverse and when scrubbing. textContent only. */
+  private paintCaption() {
+    const el = this.strip;
+    if (!el) return;
+    const s = this.clock.segment, tr = s.kind === 'audio' && this.captionsOn ? this.media?.textTracks[0] : undefined;
+    const text = tr ? cueTextAt(tr.cues as any, (s.in ?? 0) + this.clock.t) : '';
+    if (text !== this.stripText) { this.stripText = text; el.textContent = text; }
+    el.hidden = !text;
   }
 
   private paint() {
@@ -248,6 +283,7 @@ export class ExplainerPlayer extends HTMLElement {
       case 'rewind': return this.rewind(d.depth ?? 0, !!d.hold);
       case 'choose': return this.choose(d.option!);
       case 'playthrough': this.playthrough = d.on ?? !this.playthrough; return;
+      case 'captions': this.captionsOn = d.on ?? !this.captionsOn; return;
       case 'set': return this.store.set(d.var!, String(d.value ?? ''));
     }
   }
