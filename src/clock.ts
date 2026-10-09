@@ -4,7 +4,9 @@ export type Segment = { id: string; title?: string; kind: 'video' | 'audio' | 'n
 export type Marker = { id: string; segment: string; t: number; label?: string };
 export type Cue = {
   id: string; segment: string; start: number; end: number; renders: string; variant?: string;
-  data?: Record<string, any>; items?: any[]; hold?: boolean; loop_from?: number; when_var?: string; when_value?: string;
+  data?: Record<string, any>; items?: any[]; hold?: boolean;
+  /** with a design canvas: `under` (default) is drawn below the media, `over` above it */
+  layer?: 'under' | 'over'; loop_from?: number; when_var?: string; when_value?: string;
 };
 export type Manifest = { id: string; title?: string; segments: Segment[]; markers?: Marker[]; cues: Cue[] };
 export type Pos = { segmentId: string; t: number };

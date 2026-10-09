@@ -72,6 +72,76 @@
   <input type="range" min="0" max="12" step="0.01" value="0" data-explainer-action="seek" aria-label="Scrub">
 </div>
 
+<h2>Media slots: one video, choreographed</h2>
+<p>One video (<code>demo/media/slots.mp4</code>, made by <code>examples/scenes/prepare.sh</code>) whose size and position are set by the scenes.
+  It is hidden during the hook, small in a corner, zoomed to fill the frame, under text (an <code>over</code> cue), then at the side.
+  The controls are the page's own markup, children of the player under the stage: click the stage, the arrow, the buttons or the rule.</p>
+<explainer-player id="slots" canvas="1280x720" poster="still">
+  <section class="scene hook" data-explainer-poster><h1>Most explainers start with a talking head. This one starts with the point.</h1></section>
+
+  <template data-scene="hook">
+    <section class="scene hook">
+      <h1 data-at="0.2" data-for="2.4" data-fx="words">Most explainers start with a talking head. This one starts with the point.</h1>
+    </section>
+  </template>
+
+  <!-- wipe: the paper rises over the dark hook with no blend. The slot waits (data-at 0.6) until the wipe has finished. -->
+  <template data-scene="small">
+    <section class="scene small">
+      <div class="slot slot-corner" data-media-slot data-at="0.6" data-media-fit="cover"></div>
+      <h1 data-at="0.7" data-for="0.8" data-fx="write">The face, small</h1>
+      <p class="lede" data-at="1.4" data-for="0.6" data-fx="rise">Like a hero image, with a play arrow on the poster.</p>
+    </section>
+  </template>
+
+  <!-- the slot covers the whole canvas and takes 1 s to get there from where the video was (the corner of the previous scene) -->
+  <template data-scene="zoom">
+    <section class="scene zoom">
+      <div class="slot slot-full" data-media-slot data-at="0" data-for="1" data-media-fit="cover"></div>
+    </section>
+  </template>
+
+  <template data-scene="over">
+    <section class="scene over">
+      <h1 data-at="0.2" data-for="1.2" data-fx="words">Words over the picture.</h1>
+      <p class="lede" data-at="1.4" data-for="0.6" data-fx="fade">An over cue draws above the video.</p>
+    </section>
+  </template>
+
+  <template data-scene="side">
+    <section class="scene side">
+      <div class="slot slot-side" data-media-slot data-at="0" data-for="0.8" data-media-fit="cover"></div>
+      <h1 data-at="0.5" data-for="0.6" data-fx="write">Side by side</h1>
+      <p class="lede" data-at="1" data-for="0.5" data-fx="rise">Text beside the face.</p>
+    </section>
+  </template>
+
+  <script type="application/json" data-manifest>
+  {
+    "id": "slots-example",
+    "segments": [{ "id": "v", "kind": "video", "src": "../../demo/media/slots.mp4", "out": 12, "still": 4 }],
+    "cues": [
+      { "id": "hook", "segment": "v", "start": 0, "end": 3.1, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "hook" } },
+      { "id": "small", "segment": "v", "start": 2.5, "end": 5.6, "renders": "com.semanticops.explainer/scene@1",
+        "data": { "template": "small", "transition": { "in": "wipe", "dur": 0.6 } } },
+      { "id": "zoom", "segment": "v", "start": 5.6, "end": 10.6, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "zoom" } },
+      { "id": "over", "segment": "v", "start": 7, "end": 10, "renders": "com.semanticops.explainer/scene@1", "layer": "over", "data": { "template": "over" } },
+      { "id": "side", "segment": "v", "start": 10, "end": 12, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "side" } }
+    ]
+  }
+  </script>
+
+  <!-- The site's controls: children of the player that are not marked data-explainer-poster, so they stay. They inherit
+       --explainer-progress and can style off explainer-player[data-state]. -->
+  <div class="big-play"><button data-explainer-action="toggle" aria-label="Play"></button></div>
+  <div class="controls">
+    <button class="btn toggle" data-explainer-action="toggle" aria-label="Play or pause"></button>
+    <button class="btn restart" data-explainer-action="restart" aria-label="Restart"></button>
+    <div class="scrub" data-explainer-action="scrub" aria-label="Seek"><div class="fill"></div></div>
+    <span class="time"><span data-explainer-display="time">0:00</span> / <span data-explainer-display="duration">0:12</span></span>
+  </div>
+</explainer-player>
+
 <script type="module" src="../../src/index.ts"></script>
 </body>
 </html>

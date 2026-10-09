@@ -1,4 +1,5 @@
 import { clamp01 } from './clock.ts';
+import { displayText, pointerFraction, scrubKey } from './controls.ts';
 import type { Command, ExplainerPlayer } from './player.ts';
 
 // commands go to players and to <explainer-motion> (both have command())
@@ -7,22 +8,78 @@ const commandable = (e: Element | null): e is Element & Commandable => e?.localN
 const target = (sel?: string | null) =>
   (sel ? [...document.querySelectorAll(sel)] : [document.querySelector('explainer-player')]).filter(commandable);
 
+const SCRUB = '[data-explainer-action="scrub"]';
+// an explicit data-explainer-target wins; else the player (or motion element) the control sits inside; else the page's first player
+const players = (el: HTMLElement) => {
+  if (el.dataset.explainerTarget) return target(el.dataset.explainerTarget);
+  const own = el.closest('explainer-player,explainer-motion');
+  return commandable(own) ? [own] : target();
+};
+
+/** Pointer (down + drag, captured) and keyboard on `data-explainer-action="scrub"` elements, and their slider semantics. */
+function initScrub() {
+  let drag: { el: HTMLElement; id: number } | null = null;
+  const to = (el: HTMLElement, x: number) => {
+    const r = el.getBoundingClientRect();
+    const f = pointerFraction(x, r.left, r.width);
+    players(el).forEach((p) => p.command({ action: 'scrub', f }));
+  };
+  document.addEventListener('pointerdown', (e) => {
+    const el = (e.target as Element).closest<HTMLElement>(SCRUB);
+    if (!el || e.button > 0) return;
+    drag = { el, id: e.pointerId };
+    try { el.setPointerCapture(e.pointerId); } catch { /* not an active pointer (synthetic events) */ }
+    to(el, e.clientX);
+  });
+  document.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) to(drag.el, e.clientX); });
+  const end = (e: PointerEvent) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    try { drag.el.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    drag = null;
+  };
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+  document.addEventListener('keydown', (e) => {
+    const el = (e.target as Element).closest?.<HTMLElement>(SCRUB);
+    const k = el && scrubKey(e.key);
+    if (!el || !k) return;
+    e.preventDefault();
+    players(el).forEach((p) => p.command({ action: 'scrub', ...k }));
+  });
+  // slider semantics: role, min and tabindex if missing; now, max and text follow the player
+  document.addEventListener('explainer:time', (e) => {
+    const pl = e.target as Element;
+    const d = (e as CustomEvent<{ t: number; duration: number }>).detail;
+    document.querySelectorAll<HTMLElement>(SCRUB).forEach((el) => {
+      if (!players(el).includes(pl as any)) return;
+      if (!el.hasAttribute('role')) el.setAttribute('role', 'slider');
+      if (!el.hasAttribute('aria-valuemin')) el.setAttribute('aria-valuemin', '0');
+      if (!el.hasAttribute('tabindex') && !(el instanceof HTMLInputElement)) el.setAttribute('tabindex', '0');
+      const set = (n: string, v: string) => { if (el.getAttribute(n) !== v) el.setAttribute(n, v); };
+      set('aria-valuemax', String(Math.round(d.duration)));
+      set('aria-valuenow', String(Math.round(d.t)));
+      set('aria-valuetext', `${displayText('time', d.t, d.duration)} of ${displayText('duration', d.t, d.duration)}`);
+    });
+  });
+}
+
 function run(el: HTMLElement) {
   const v = el.dataset.explainerValue ?? (el as HTMLInputElement).value;
   const cmd: Command = { action: el.dataset.explainerAction!, to: el.dataset.explainerTo, rate: +v, t: +v, on: v === 'on' ? true : v === 'off' ? false : undefined };
-  target(el.dataset.explainerTarget).forEach((p) => p.command(cmd));
+  players(el).forEach((p) => p.command(cmd));
 }
 
 /** Delegated buttons/sliders, document-level commands and scroll-section seeks. */
 export function initTriggers() {
   document.addEventListener('click', (e) => {
     const el = (e.target as Element).closest<HTMLElement>('[data-explainer-action]');
-    if (el && !(el instanceof HTMLInputElement)) run(el);
+    if (el && !(el instanceof HTMLInputElement) && el.dataset.explainerAction !== 'scrub') run(el);
   });
   document.addEventListener('input', (e) => {
     const el = e.target as HTMLElement;
-    if (el instanceof HTMLInputElement && el.dataset.explainerAction) run(el);
+    if (el instanceof HTMLInputElement && el.dataset.explainerAction && el.dataset.explainerAction !== 'scrub') run(el);
   });
+  initScrub();
   // commands dispatched on a player or motion element are handled by it; those on the document go to detail.target or the first player
   document.addEventListener('explainer:command', (e) => {
     if ((e.target as Element).closest?.('explainer-player,explainer-motion')) return;
