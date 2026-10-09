@@ -7,7 +7,7 @@ This file gives project context for agents working in this repo. Read it before 
 
 **Status**
 - Issue: the-greenman/semanticops.com#30. Its Answers line is "No affirmed problem yet".
-- Repo: the-greenman/explainer, **private** for now.
+- Repo: the-greenman/explainer, **public**, MIT. The private workshop (old PRs #1–#15, private examples) is the-greenman/explainer-workshop.
 - Default branch: `main`.
 - Approved plan: `docs/plan.md`.
 - Capability findings: `docs/findings.md`.
@@ -42,7 +42,7 @@ This file gives project context for agents working in this repo. Read it before 
 ## Decisions after approval
 - **Domain packs:** the core pack is `src/components/`. Domain packs (`examples/*`) import the contract and call `registerComponents`.
 - **Canvas components** use `canvasComponent` from `src/components/canvas.ts`. Sizing is never hand-rolled per pack.
-- **One canvas component per family**, with the scene id as cue data, is fine when scenes share layers (equilibrium `wheel-scene`).
+- **One canvas component per family**, with the scene id as cue data, is fine when scenes share layers (e.g. a wheel scene whose layers persist).
 - **One media file per explainer where possible**, with segments as `in`/`out` cuts of it. Separate files still freeze about 300 ms at the boundary; crossing a cut inside one file is seamless (the player skips the re-seek when already at the cut). R2 has no 25 MB per-file limit (that is a Pages/Workers static-asset limit), so the budget is bandwidth: about 2.4 Mbit/s at the current encode, about 90 MB per 5 minutes. A delay after a choice jump (a seek of about 250-320 ms) is accepted.
 - **History is the path taken.** History always equals the route from the start to where you are. Default continuation and choices push entries (`{segmentId, t, to, hold?}`); navigation (`jumpTo` and `seek`: markers, prev/next, scroll sections, the `jump` command, scrub) cuts history back when the target is on an earlier span of the route (most recent wins, even before a choice), pushes the default-continuation hops when the target is further along, and leaves history alone only for a branch-only target (`routeSpans` in `clock.ts`, shared with the path view). Reverse unwinds a branch when it crosses where it landed (else, past the segment start, goes to the default predecessor's end, else stops at 0). `back()` pops and, for a choice, re-shows it held.
 - **Default path (playthrough).** A choice option can be `default: true` (a field on `choice-option`, to settle before the SRS types). With `playthrough` on (player attribute, `playthrough` command, button), a hold takes its default instead of holding and records it in history like a real choice, marked `auto: true` (the path view shows "(default)"). A choice with no default just continues. The choice overlay is not displayed at all in playthrough. Defaults that loop back loop until stopped: no loop guard, history grows per lap.
@@ -56,12 +56,12 @@ This file gives project context for agents working in this repo. Read it before 
 - `schema/explainer.schema.json` is the manifest contract.
 - `demo/` is the gallery.
   - `demo/media/` and `demo/video/` are **git-ignored** and hold local clips.
-- `examples/creation/` is the the-system-networks scroll steps. `examples/equilibrium/` is the equilibrium.cards opening hero. `examples/video/` is two talking-head clips with overlays, captions and a held choice: the reference for real media. `examples/tarot/` is an audio-only narrated story (chapter cuts of one m4a, card images and diagrams as the picture, the caption strip). Each has its own README with findings.
+- `examples/video/` is two talking-head clips with overlays, captions and a held choice: the reference for real media. It has its own README with findings.
+- **Private examples live in the-greenman/explainer-workshop**, not here: `creation` (the-system-networks scroll steps), `equilibrium` (equilibrium.cards hero) and `tarot` (the owner's audio-only narrated story). They adapt code from private repos or hold the owner's narration, so they never come into this public repo. A test that needs their shape uses a synthetic manifest.
 - `examples/video/prepare.sh` makes the media working copies in `demo/video/` (0.5 s keyframes, faststart, VTT from the embedded subtitles). Run it on a fresh checkout. `examples/video/check.mjs` measures the media sync paths in headless Chromium.
-- `examples/tarot/prepare.sh` makes the audio, VTT and card images in `demo/media/tarot/` (git-ignored; takes the card dir as an argument). `examples/tarot/build-manifest.mjs` generates `manifest.json` from the SRT; `check.mjs` measures audio sync, cuts, the caption strip, the spread and the overlay.
 
 ## Commands and gates
-- `npm run dev`, then open /demo/, /examples/creation/, /examples/equilibrium/, /examples/video/ or /examples/tarot/.
+- `npm run dev`, then open /demo/ or /examples/video/.
 - Gates, judged by exit code: `npm test` (node --test over test/ and examples/), `npx tsc --noEmit`, `npm run build`.
 - Headless browser checks use the playwright install at `/home/greenman/dev/semanticops/srs-web/node_modules/playwright/index.mjs` (chromium is installed). Serve with `npx vite --port 5199 --strictPort` from the repo root.
 
@@ -74,7 +74,7 @@ This file gives project context for agents working in this repo. Read it before 
 
 ## Current state
 - **Done:** plan step 2. That covers the clock, player, triggers, store, core components and gallery, plus the two capability probes, with their core fixes. Everything is on `main`.
-- **Real media:** video is verified with real clips in `examples/video/`: forward, rate, reverse, scrub, segment switch, and hold with `loop_from`. Audio-only segments are verified with a real file in `examples/tarot/` (same measurements, plus the caption strip and the offline render). Safari, Firefox, phones and R2 delivery are also untested.
+- **Real media:** video is verified with real clips in `examples/video/`: forward, rate, reverse, scrub, segment switch, and hold with `loop_from`. Audio-only segments are verified with a real file in the workshop's `tarot` example (same measurements, plus the caption strip and the offline render). Safari, Firefox, phones and R2 delivery are also untested.
 
 ## Next steps
 1. **muDemocracy pilot: guide 1.1, Decision Recording.** The design is in `docs/mudemocracy-pilot.md`. Tracking is in **the-greenman/muDemocracy.org#309** and its sub-issues, so PRs here reference those (`Refs the-greenman/muDemocracy.org#N`).

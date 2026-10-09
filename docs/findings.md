@@ -1,6 +1,6 @@
 # Capability findings (2026-10-08)
 
-There were two probes. Each one ported an existing animation onto the player to test whether the model fits. Neither tried to recreate its original exactly. The detailed findings, with file:line references into the source repos, are in `examples/creation/README.md` and `examples/equilibrium/README.md`.
+There were two probes. Each one ported an existing animation onto the player to test whether the model fits. Neither tried to recreate its original exactly. The probes and their detailed findings, with file:line references into the source repos, live in the private workshop repo (the-greenman/explainer-workshop, `examples/creation/` and `examples/equilibrium/`), because they adapt code from private repos.
 
 ## Verified in headless Chromium
 In each probe, the frames were identical at the same time whether it was reached forwards or backwards.

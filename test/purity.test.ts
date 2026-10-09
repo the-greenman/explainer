@@ -54,34 +54,3 @@ test('numbered-list without `at` keeps the even reveal', () => {
   const o = opacities(items, 0.2, undefined, 'default');
   assert.ok(o[0] > 0 && o[1] === 0);
 });
-
-// Creation pack: linkedom has no canvas, so test the wrapped steps' element state directly.
-// Every step must reach the same element state at p=0.3 via any history (dt is always 0).
-import { creationPack, creationSteps } from '../examples/creation/canvas-step.ts';
-
-test('creation pack has a component per step', () => {
-  assert.equal(creationPack.length, creationSteps.length);
-});
-
-const snap = (step: any) => JSON.stringify(step.elements, (_k, v) => (typeof v === 'function' ? undefined : v));
-const W = 800, H = 450;
-for (const [renders, , Step, opts] of creationSteps) {
-  test(`${renders} step state at p=0.3 is history-independent`, () => {
-    const make = () => new (Step as any)({ width: W, height: H, centerX: W / 2, centerY: H / 2, baseRadius: H * 0.15 }, opts);
-    const at = (...path: number[]) => {
-      const s = make();
-      for (const p of [...path, 0.3]) { s.update(0, p); }
-      return snap(s);
-    };
-    const direct = at();
-    for (const path of [[1], [0], [0.9, 0.1, 0.65], [0.05, 0.5, 0.75, 1, 0.2], [0.2, 0.6, 0.95, 0.4]]) assert.equal(at(...path), direct, `via ${path}`);
-    // sweep: many p, forward then backward, must match a fresh instance at each p
-    const s = make();
-    const ps = Array.from({ length: 41 }, (_, i) => i / 40);
-    for (const p of [...ps, ...ps.slice().reverse()]) {
-      s.update(0, p);
-      const f = make(); f.update(0, p);
-      assert.equal(snap(s), snap(f), `p=${p}`);
-    }
-  });
-}

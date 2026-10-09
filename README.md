@@ -87,19 +87,18 @@ Overlay-only workflow: `node scripts/render.mjs --manifest m.json --mode overlay
 Player API for this: `<explainer-player render>` (set before the manifest) mounts no media and runs no rAF loop; `player.renderFrame(segmentId, t, vars?)` puts the clock there and paints once.
 
 ## Commands
-`npm run dev` (gallery at /demo/; examples at /examples/creation/, /examples/equilibrium/, /examples/video/ and /examples/tarot/), `npm run build`, `npm test` (includes examples).
+`npm run dev` (gallery at /demo/; examples at /examples/video/), `npm run build`, `npm test` (includes examples).
 
 Project context, status and next steps: `CLAUDE.md`. Plan: `docs/plan.md`. Capability findings: `docs/findings.md`.
 
 ## Embedding in a site
-`npm pack` here gives `explainer-0.1.0.tgz`; install it in the site (`npm i ./explainer-0.1.0.tgz`). Exports: `explainer` (core, defines `<explainer-player>`/`<explainer-path>`, needs the DOM) and `explainer/tarot` (the tarot pack; no DOM at import). Both share one registry chunk, but the pack registers into the core's registry on import, so **import `explainer` first**. Client-only (SSR/SvelteKit: do it in `onMount`):
+Install from a git tag (`npm i github:the-greenman/explainer#<tag>`) or `npm pack` a checkout. The export `explainer` is the core: it defines `<explainer-player>`/`<explainer-path>` and needs the DOM. A domain pack imports the contract from it and calls `registerComponents`, so **import `explainer` before the pack**. Client-only (SSR/SvelteKit: do it in `onMount`):
 ```js
-await import('explainer'); await import('explainer/tarot');
-player.manifest = m; // <explainer-player> element; manifest from examples/tarot/build-manifest.mjs
+await import('explainer'); await import('./my-pack.ts');
+player.manifest = m; // <explainer-player> element
 ```
-Deploy manifest: `node examples/tarot/build-manifest.mjs --media-base https://cdn/x/ --captions /path/x.vtt --out out.json`.
 `crossorigin` on `<explainer-player>` (e.g. `crossorigin="anonymous"`) is copied to the media element when it is created (not observed; set it before the manifest) and `<track>` inherits it. Needed when the VTT is cross-origin (it then needs CORS headers); a same-origin VTT with cross-origin audio works without it.
 Theme: CSS variables on the player or an ancestor, `--explainer-accent`, `--explainer-bg`, `--explainer-ink`, `--explainer-font`.
 
 ## scrub-root
-`<explainer-player play="scrub" scrub-root="#article">`: progress is the scroll position through that element (0 when its top reaches the viewport top, 1 when its bottom reaches the viewport bottom), so a sticky player inside a tall article is scrubbed by scrolling the article. Without it, the player's own position through the viewport is used. See `examples/creation/`.
+`<explainer-player play="scrub" scrub-root="#article">`: progress is the scroll position through that element (0 when its top reaches the viewport top, 1 when its bottom reaches the viewport bottom), so a sticky player inside a tall article is scrubbed by scrolling the article. Without it, the player's own position through the viewport is used.

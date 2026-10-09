@@ -172,9 +172,15 @@ test('an auto-taken option is a choice step with taken and auto', () => {
   assert.equal(s[2].kind === 'span' && s[2].label, 'Midpoint');
 });
 
-test('tarot manifest: jumping around never leaves a stale or lost crumb', async () => {
-  const { readFileSync } = await import('node:fs');
-  const tm = JSON.parse(readFileSync(new URL('../examples/tarot/manifest.json', import.meta.url), 'utf8')) as Manifest;
+test('chapter cuts of one file: jumping around never leaves a stale or lost crumb', () => {
+  // the shape of a long narrated story: chapters as cuts, markers inside chapters (and one just before a cut)
+  const ch = (id: string, title: string, a: number, b: number) => ({ id, title, kind: 'audio' as const, src: 'story.m4a', in: a, out: b });
+  const tm: Manifest = {
+    id: 'chapters',
+    segments: [ch('intro', 'Intro', 0, 45), ch('fool', 'The Fool', 45, 184), ch('magician', 'The Magician', 184, 333), ch('high-priestess', 'The High Priestess', 333, 415), ch('empress', 'The Empress', 415, 514)],
+    markers: [{ id: 'card-0', segment: 'intro', t: 41.4 }, { id: 'card-3', segment: 'empress', t: 2.2 }],
+    cues: [],
+  };
   const c = new Clock(tm);
   const crumbs = () => steps(c).filter((s) => s.kind === 'span').map((s) => s.label).join(' › ');
   c.play();
