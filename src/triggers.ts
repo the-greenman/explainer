@@ -9,7 +9,12 @@ const target = (sel?: string | null) =>
   (sel ? [...document.querySelectorAll(sel)] : [document.querySelector('explainer-player')]).filter(commandable);
 
 const SCRUB = '[data-explainer-action="scrub"]';
-const players = (el: HTMLElement) => target(el.dataset.explainerTarget);
+// an explicit data-explainer-target wins; else the player (or motion element) the control sits inside; else the page's first player
+const players = (el: HTMLElement) => {
+  if (el.dataset.explainerTarget) return target(el.dataset.explainerTarget);
+  const own = el.closest('explainer-player,explainer-motion');
+  return commandable(own) ? [own] : target();
+};
 
 /** Pointer (down + drag, captured) and keyboard on `data-explainer-action="scrub"` elements, and their slider semantics. */
 function initScrub() {
@@ -46,8 +51,7 @@ function initScrub() {
     const pl = e.target as Element;
     const d = (e as CustomEvent<{ t: number; duration: number }>).detail;
     document.querySelectorAll<HTMLElement>(SCRUB).forEach((el) => {
-      const sel = el.dataset.explainerTarget;
-      if (!(sel ? pl.matches(sel) : pl === document.querySelector('explainer-player'))) return;
+      if (!players(el).includes(pl as any)) return;
       if (!el.hasAttribute('role')) el.setAttribute('role', 'slider');
       if (!el.hasAttribute('aria-valuemin')) el.setAttribute('aria-valuemin', '0');
       if (!el.hasAttribute('tabindex') && !(el instanceof HTMLInputElement)) el.setAttribute('tabindex', '0');
@@ -62,7 +66,7 @@ function initScrub() {
 function run(el: HTMLElement) {
   const v = el.dataset.explainerValue ?? (el as HTMLInputElement).value;
   const cmd: Command = { action: el.dataset.explainerAction!, to: el.dataset.explainerTo, rate: +v, t: +v, on: v === 'on' ? true : v === 'off' ? false : undefined };
-  target(el.dataset.explainerTarget).forEach((p) => p.command(cmd));
+  players(el).forEach((p) => p.command(cmd));
 }
 
 /** Delegated buttons/sliders, document-level commands and scroll-section seeks. */
