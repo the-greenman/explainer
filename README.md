@@ -166,9 +166,10 @@ Render an explainer to files offline, frame-exact (not recorded in real time): `
 node scripts/render.mjs --manifest examples/video/manifest.json [--path default | --choose a,b] [--fps 30] [--scale 1.5]
   [--out dir] [--mode overlay|composite|both] [--format prores|png|webm] [--burn-captions] [--var k=v] [--keep-frames]
   [--pack module] [--css file] [--url http://localhost:5199] [--workers 4] [--max-seconds 3600]
+  [--canvas WxH] [--scenes file.html] [--page url [--selector css]]
 ```
 - **Path.** `--path default` (the default) is playthrough: defaults are taken, and it stops at `ends: stop`, or at the first branch that goes back to a position already rendered (a loop: one lap, ending at the choice point). `--choose a,b` is playthrough off: at each choice the next option id is chosen; when the list runs out the render stops at that choice; an unknown id is an error. `--max-seconds` caps the walk. `--var` seeds variables (`sets_variable` options set them along the way, so `when_var` cues follow the path).
-- **Resolution.** The CSS stage is always 1280x720 (so rem/px text keeps its proportions); `--scale` is the device scale factor: 1.5 gives 1920x1080.
+- **Resolution.** The CSS stage is 1280x720 unless `--canvas WxH` names another design canvas (so rem/px text keeps its proportions); `--scale` is the device scale factor: 1.5 gives 1920x1080 for 1280x720, 1080x1350 for 720x900. `--page <url>` renders a player on a real page instead; see "Scenes".
 - **Theme and components.** The page loads `components.ts` and `theme.css` next to the manifest if present (override with `--pack` / `--css`, repo-relative or absolute). Choice cues are never drawn: a render is a video.
 
 Outputs in `--out` (default `render-out/`):
@@ -222,6 +223,47 @@ For a logo in a heading, a highlighter mark in prose, a small card in nav: one r
 - **Surfaces.** The component must declare `web` in `meta.surfaces`; if not, the element logs one console warning per component and renders anyway.
 
 Gallery: the `<explainer-motion>` section of `demo/index.html` (inline in a sentence, in a heading, hover, scrub, manual), using the small neutral component in `demo/pack.ts`.
+
+## Scenes: the page, performed
+A scene is the site's own server-rendered markup and CSS, placed in the player and revealed by motion. The engine never builds or restyles brand markup; it only reveals what is already there. Most of an explainer can be full-frame scenes, over a video that shows a talking head only now and then. Neutral example: `examples/scenes/` (linked from the gallery).
+
+**Template.** Put `<template data-scene="<id>">…markup…</template>` inside the `<explainer-player>` (preferred) or anywhere in the document. The first match inside the player wins, then the first in the document. Light-DOM children of the player are never removed by it.
+
+**The cue.** `com.semanticops.explainer/scene@1` (core pack, surfaces `web` and `video`):
+```json
+{ "id": "intro", "segment": "s", "start": 0, "end": 6.4, "renders": "com.semanticops.explainer/scene@1",
+  "data": { "template": "intro", "transition": { "in": "cut", "out": "fade", "dur": 0.4 } } }
+```
+`transition.in` and `.out` are `cut` (the default) or `fade`; `dur` is the fade length in seconds (default 0.4). `mount` clones the template content into the cue node, which fills the stage (the canvas, see below). **The scene's own root decides its background** (an opaque paper or black surface covers the video); the engine adds none. Give the root `height:100%` to fill the canvas. For a crossfade, overlap two cues and give only the later one `"in": "fade"`: the earlier cue stays opaque underneath until the later one is fully in (a fade-out on the earlier cue would dip to the stage background). The `still` of a scene is the p at which every choreographed element is complete (the max of `at + for` over the cue length), also past the in-fade and before any out-fade.
+
+**Choreography.** On any element inside a scene: `data-at="<seconds from cue start>"`, `data-for="<seconds>"` (default 0.5) and `data-fx="<name>"`. Every render sets the inline custom property `--fx-p` = `clamp01((t - at) / for)` on such an element (t = `p * dur`), and the built-in effects set more from it:
+
+| `data-fx` | sets |
+|---|---|
+| `fade` | `opacity` |
+| `rise` | `opacity`, and `transform: translateY(12px → 0)` |
+| `write` | `clip-path: inset(0 X% 0 0)`, a left-to-right reveal |
+| `wipe` | `clip-path: inset(0 0 X% 0)`, a top-to-bottom reveal |
+| `none` (or no `data-fx`) | only `--fx-p` |
+
+Elements without `data-at` are untouched. The built-in effects overwrite the properties they set (`transform` for `rise`, `clip-path` for `write` and `wipe`), so keep your own values for those on a wrapper. All of it is a pure function of p, so any seek, in any order, gives the same frame (`test/scene.test.ts`).
+
+**Your own effects.** Any other `data-fx` name sets only `--fx-p`; implement the effect in the site's CSS:
+```css
+.hl[data-fx="hl-draw"] { background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 100%;
+  background-size: calc(var(--fx-p, 1) * 100%) var(--hl-height); }
+```
+**The static page is the fallback.** Outside a player nothing sets `--fx-p`, so `var(--fx-p, 1)` is 1 and the markup is complete: that is what the page shows without JavaScript, in print, and as the poster. Write every scene CSS with the `1` fallback.
+
+**Design canvas.** `canvas="1280x720 720x900@<600"` on the player: a list of `WxH` entries (CSS px), each optionally with `@<N` ("use when the player is narrower than N px"). Conditioned entries are tried in order and the first that holds wins; otherwise the first entry with no condition is the fallback (if there is none, the last entry). The stage then holds a canvas element of exactly W×H CSS px, `transform: scale(stageWidth / W)` from the top-left, and the stage height is `stageWidth * H / W`. All cue layers (and the media element) render inside it; captions and the caption strip stay outside. The canvas element gets `data-canvas="WxH"` and `container-type: size`, so a site restyles per canvas with `[data-canvas="720x900"] .scene { … }` or container queries. It is re-chosen on resize (`ResizeObserver` on the player) and repainted. Changing the attribute re-initialises the player. Without `canvas` the stage is the 16:9 `cqw` stage, as before. Pure parsing and choice: `parseCanvas`, `chooseCanvas` (`src/design-canvas.ts`).
+
+**Poster.** Two things make the player read as page copy before play:
+- `poster="still"`: before the first play, the player paints the first segment at its still time (`player.stillTime()`; set `still` on the segment to choose it). The first play, seek or jump starts from the normal position (t=0 for play); `pause` does not end the poster.
+- **Static first:** light-DOM children of the player other than `<template>` and `<script>` stay visible as the poster until the manifest has loaded and the first paint has happened, then are hidden (`data-explainer-poster="hidden"`, `display:none`), not removed, so they remain for no-JS and print before load.
+
+**Inline manifest.** A child `<script type="application/json" data-manifest>` is used when there is no `src` attribute and no `.manifest` set. (The player waits for `DOMContentLoaded` first when the document is still parsing.)
+
+**Rendering scenes.** `scripts/render.mjs --canvas WxH` renders at that canvas: the output is W×H times `--scale` (the default 1.5 keeps 1280x720 at 1920x1080; 720x900 gives 1080x1350). `--page <url>` renders a player found on any page (`--selector`, default the first `explainer-player`) instead of the render page, so the site's real page, with its CSS and templates, is what is rendered: the player is marked `render` as it is inserted, moved to the top-left at W px, and everything else on the page is hidden. `--manifest` is then optional (the page's player gives it). With `--manifest` and the render page, `--scenes file.html` supplies the templates. See "Rendering".
 
 ## Embedding in a site
 Install from a git tag (`npm i github:the-greenman/explainer#<tag>`) or `npm pack` a checkout. The export `explainer` is the core: it defines `<explainer-player>`/`<explainer-path>` and needs the DOM. A domain pack imports the contract from it and calls `registerComponents`, so **import `explainer` before the pack**. Client-only (SSR/SvelteKit: do it in `onMount`):
