@@ -51,7 +51,7 @@ This file gives project context for agents working in this repo. Read it before 
 - **Rendering is offline and frame-stepped,** never recorded in real time: the plan steps the pure clock, chromium paints each `{segment, t}`. **Overlay-only (ProRes 4444 alpha + `cuts.json` + `captions.vtt`) is a first-class output**, not a by-product of the composite.
 
 ## Layout
-- `src/clock.ts` is the pure clock logic (no DOM). `src/player.ts` is the custom element. `src/triggers.ts` holds buttons, scroll sections and the `play="enter|scrub"` modes. `src/store.ts` holds the variables. `src/path.ts` is the pure path-taken steps (history to spans/choices) and `src/path-view.ts` is `<explainer-path>` (crumbs/tree).
+- `src/clock.ts` is the pure clock logic (no DOM). `src/player.ts` is the custom element. `src/triggers.ts` holds buttons, scroll sections and the `play="enter|scrub"` modes. `src/store.ts` holds the variables. `src/motion-element.ts` is `<explainer-motion>` (one component anywhere, own clock, `enter|scrub|hover|manual`); it shares `bindEnter`/`bindScrub` with the player. `src/path.ts` is the pure path-taken steps (history to spans/choices) and `src/path-view.ts` is `<explainer-path>` (crumbs/tree).
 - `src/render-plan.ts` is the pure render plan (frames and source cuts by stepping a `Clock`; captions retiming). `scripts/render.mjs` is the offline renderer CLI; `examples/render/` is its page. See README "Rendering".
 - `src/components/` holds the core pack (intro, numbered-list, choice) plus `base.ts` (contract and registry) and `canvas.ts`.
 - `schema/explainer.schema.json` is the manifest contract.

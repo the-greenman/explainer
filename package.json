@@ -14,6 +14,7 @@
   "scripts": {
     "dev": "vite --open /demo/",
     "build": "vite build",
+    "prepare": "vite build",
     "test": "node --test test/ examples/",
     "render": "node scripts/render.mjs"
   },

@@ -21,12 +21,16 @@ export type Component = {
 };
 
 const reg = new Map<string, Component>();
+const registerListeners = new Set<() => void>();
 export function registerComponents(pack: Component[]) {
   for (const c of pack) {
     if (reg.has(c.meta.renders)) throw new Error(`duplicate component for ${c.meta.renders}`);
     reg.set(c.meta.renders, c);
   }
+  registerListeners.forEach((f) => f());
 }
+/** Call `fn` after every `registerComponents`, e.g. so an element whose component is not there yet can retry. Returns unsubscribe. */
+export const onRegister = (fn: () => void) => { registerListeners.add(fn); return () => { registerListeners.delete(fn); }; };
 export const lookup = (renders: string) => reg.get(renders);
 export const registered = () => [...reg.values()];
 

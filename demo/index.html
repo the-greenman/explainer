@@ -11,6 +11,8 @@
   input[type=range] { flex: 1; min-width: 10rem; }
   .spacer { height: 80vh; }
   section { padding: 1rem; border-left: 4px solid #ccc; margin: 2rem 0; }
+  explainer-motion.u { width: 5.4em; height: 1.2em; vertical-align: bottom; }
+  explainer-motion.card { display: block; width: 100%; height: 14rem; border: 1px solid #ddd; }
 </style>
 </head>
 <body>
@@ -39,6 +41,25 @@
 <h2>play="enter"</h2>
 <explainer-player play="enter" src="short.json"></explainer-player>
 <div class="spacer"></div>
+<h2>&lt;explainer-motion&gt;</h2>
+<p>One component anywhere in a page, no stage. Inline in a sentence: the page needs
+  <explainer-motion id="m-enter" class="u" renders="com.semanticops.explainer.demo/underline@1" dur="1.5" play="enter"><span>this phrase</span><script type="application/json">{"data":{"text":"this phrase"}}</script></explainer-motion>
+  to draw itself when it scrolls into view.</p>
+<h3>A heading with
+  <explainer-motion id="m-heading" class="u" renders="com.semanticops.explainer.demo/underline@1" variant="thick" dur="1" play="enter"><script type="application/json">{"data":{"text":"a mark"}}</script></explainer-motion>
+</h3>
+<p>On hover or focus (plays forward, reverses on leave):
+  <a href="#hover" style="color:inherit"><explainer-motion id="m-hover" class="u" renders="com.semanticops.explainer.demo/underline@1" dur="0.8" play="hover"><script type="application/json">{"data":{"text":"hover me"}}</script></explainer-motion></a></p>
+<p>Manual, driven by buttons:
+  <explainer-motion id="m-manual" class="u" renders="com.semanticops.explainer.demo/underline@1" dur="2" play="manual"><script type="application/json">{"data":{"text":"press play"}}</script></explainer-motion>
+  <button data-explainer-action="play" data-explainer-target="#m-manual">Play</button>
+  <button data-explainer-action="pause" data-explainer-target="#m-manual">Pause</button>
+  <button data-explainer-action="rate" data-explainer-value="-1" data-explainer-target="#m-manual">Reverse</button></p>
+<div class="spacer"></div>
+<p>Scrub (progress follows the scroll position) with a core component:</p>
+<explainer-motion id="m-scrub" class="card" renders="com.semanticops.explainer/numbered-list@1" dur="4" play="scrub"><script type="application/json">{"data":{"heading":"Hello {name}"},"items":["Scroll","Past","The card"]}</script></explainer-motion>
+<div class="spacer" style="height:140vh"></div>
 <script type="module" src="../src/index.ts"></script>
+<script type="module" src="pack.ts"></script>
 </body>
 </html>

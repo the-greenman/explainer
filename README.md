@@ -161,6 +161,43 @@ Player API for this: `<explainer-player render>` (set before the manifest) mount
 
 Project context, status and next steps: `CLAUDE.md`. Plan: `docs/plan.md`. Capability findings: `docs/findings.md`.
 
+## One component anywhere: `<explainer-motion>`
+For a logo in a heading, a highlighter mark in prose, a small card in nav: one registered component mounted in the element itself, with no stage, no manifest and no aspect ratio. It is `display:inline-block; position:relative; container-type:inline-size` by default (via a zero-specificity `:where(explainer-motion)` rule, so any page CSS wins), so **the page sizes it**: give it a `width` and `height` (in `em` to follow the text). `container-type:inline-size` means `cqw` works inside, and also that the element has no intrinsic width of its own.
+```html
+<p>The page needs
+  <explainer-motion renders="com.example/underline@1" dur="1.5" play="enter" style="width:5.4em;height:1.2em">
+    <script type="application/json">{"data":{"text":"this phrase"},"items":[]}</script>
+  </explainer-motion>
+  to draw itself.</p>
+```
+- **Attributes.** `renders` (the component ref), `variant`, `dur` (seconds, default 1), `play` (`enter` default, `scrub`, `hover`, `manual`), `scrub-root` (as the player's), `rate` (speed multiplier, default 1). They are observed: changing `renders`/`variant` remounts.
+- **Data.** From a child `<script type="application/json">` holding `{"data": {...}, "items": [...]}`, or from JS: `el.data = {...}; el.items = [...]` (a property wins over the script). `variant` is merged under `data`, as for a cue. `{name}` text is filled from the page variable store (`scopeFor`: the nearest `<explainer-scope>`, else the document) and the element repaints when a variable changes.
+- **One clock, pure render.** The element has its own time `t` over `dur` and every paint calls `render(node, t / dur, data, vars, items, dur)`; a component keeps no state, so `el.seek(0.3)` gives the same DOM however you got there (`test/motion-element.test.ts`). `el.p`, `el.t`, `el.playing` read the clock.
+- **Modes.**
+  - `enter`: plays forward once when it scrolls into view (40% visible) and reverses when scrolled back above it. Same logic as the player's `play="enter"` (`bindEnter` in `src/triggers.ts`).
+  - `scrub`: p follows the scroll position, through the viewport or through `scrub-root` (`bindScrub`, shared with the player).
+  - `hover`: plays forward on `pointerenter` or `focusin`, reverses on `pointerleave` or `focusout`. Keyboard users need something focusable: put it in a link or button, or give it `tabindex="0"`.
+  - `manual`: `play()`, `pause()`, `seek(p)` (p in 0..1), `setRate(r)` (signed speed, starts playing; 0 pauses). It also takes the player's `explainer:command` events (`play`, `pause`, `seek` with `t` in seconds, `rate`, `set`) dispatched on the element, and `data-explainer-action` buttons with `data-explainer-target` pointing at it.
+- **Reduced motion and print.** With `prefers-reduced-motion: reduce` it does not animate: nothing is bound and it shows the component's still (`stillP`, see the component contract), whatever the mode; it follows the setting changing. On `beforeprint` it shows the still, and on `afterprint` it goes back to where it was and resumes if it was playing.
+- **Static first (progressive enhancement).** Light-DOM children the element has before it mounts stay visible until the component mounts, and are then replaced. So the site renders the still as plain HTML on the server and the element takes over when the script loads (no flash, and it works without JS). If the component is not registered yet (a pack imported after the core) the children stay and the element mounts when `registerComponents` runs.
+  ```astro
+  ---
+  // Highlight.astro: server-rendered still, enhanced in the browser
+  const { text } = Astro.props;
+  ---
+  <explainer-motion renders="com.example/highlight@1" play="enter" dur="1.2" style="width:6em;height:1.3em">
+    <mark class="highlight-still">{text}</mark>
+    <script type="application/json" set:html={JSON.stringify({ data: { text } })} />
+  </explainer-motion>
+  <script>
+    await import('explainer');
+    await import('../motion/pack.ts');
+  </script>
+  ```
+- **Surfaces.** The component must declare `web` in `meta.surfaces`; if not, the element logs one console warning per component and renders anyway.
+
+Gallery: the `<explainer-motion>` section of `demo/index.html` (inline in a sentence, in a heading, hover, scrub, manual), using the small neutral component in `demo/pack.ts`.
+
 ## Embedding in a site
 Install from a git tag (`npm i github:the-greenman/explainer#<tag>`) or `npm pack` a checkout. The export `explainer` is the core: it defines `<explainer-player>`/`<explainer-path>` and needs the DOM. A domain pack imports the contract from it and calls `registerComponents`, so **import `explainer` before the pack**. Client-only (SSR/SvelteKit: do it in `onMount`):
 ```js
@@ -169,6 +206,9 @@ player.manifest = m; // <explainer-player> element
 ```
 `crossorigin` on `<explainer-player>` (e.g. `crossorigin="anonymous"`) is copied to the media element when it is created (not observed; set it before the manifest) and `<track>` inherits it. Needed when the VTT is cross-origin (it then needs CORS headers); a same-origin VTT with cross-origin audio works without it.
 Theme: CSS variables on the player or an ancestor; see the Theme section for every token.
+
+## Releases
+Releases are tags; see `CHANGELOG.md`. After a PR is merged to `main` and the changelog's "Unreleased" entries are moved under a version heading, the owner tags `vX.Y.Z` on `main`. A site pins the tag: `"explainer": "github:the-greenman/explainer#vX.Y.Z"`. `dist/` is not committed: the package has a `prepare` script (`vite build`), which npm runs after installing a dependency's devDependencies when it is fetched from a repository, so `node_modules/explainer/dist/index.js` exists after `npm i`. A branch or commit works the same way: `github:the-greenman/explainer#<branch-or-sha>`.
 
 ## scrub-root
 `<explainer-player play="scrub" scrub-root="#article">`: progress is the scroll position through that element (0 when its top reaches the viewport top, 1 when its bottom reaches the viewport bottom), so a sticky player inside a tall article is scrubbed by scrolling the article. Without it, the player's own position through the viewport is used.
