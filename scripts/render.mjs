@@ -4,7 +4,10 @@
 //   node scripts/render.mjs --manifest examples/video/manifest.json [--path default | --choose a,b] [--fps 30] [--scale 1.5]
 //     [--out dir] [--mode overlay|composite|both] [--format prores|png|webm] [--burn-captions] [--var k=v]
 //     [--pack module] [--css file] [--url http://localhost:5199] [--workers 4] [--max-seconds 3600] [--bg colour]
-// See README.md "Rendering".
+//     [--canvas WxH] [--scenes file.html] [--page url [--selector css]]
+// --canvas renders at that design canvas (output W x H times --scale). --scenes: an HTML file of <template data-scene> for the render page.
+// --page renders a player found on a real page (with that page's own CSS and templates) instead of the render page; --manifest is then
+// optional (the player's own manifest is used). See README.md "Rendering" and "Scenes".
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,10 +15,10 @@ import { fileURLToPath } from 'node:url';
 import { mergeCuts, parseVtt, planRender, retimeCaptions, writeVtt } from '../src/render-plan.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const STAGE_W = 1280, STAGE_H = 720; // the designed CSS size of the stage; output resolution comes from --scale
+let STAGE_W = 1280, STAGE_H = 720; // the designed CSS size of the stage (--canvas); output resolution comes from --scale
 
 // ---- args ----
-const opt = { path: 'default', fps: 30, scale: 1.5, out: 'render-out', mode: 'both', format: 'prores', var: [], pack: [], css: [], url: 'http://localhost:5199', workers: 4, 'max-seconds': 3600, bg: '' };
+const opt = { path: 'default', fps: 30, scale: 1.5, out: 'render-out', mode: 'both', format: 'prores', var: [], pack: [], css: [], url: 'http://localhost:5199', workers: 4, 'max-seconds': 3600, bg: '', canvas: '', scenes: '', page: '', selector: 'explainer-player' };
 const flags = new Set(['burn-captions', 'keep-frames']);
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
@@ -29,20 +32,27 @@ for (let i = 0; i < argv.length; i++) {
   if (Array.isArray(opt[k])) opt[k].push(v); else opt[k] = v;
 }
 function fail(msg) { console.error(`render: ${msg}`); process.exit(2); }
-if (!opt.manifest) fail('--manifest is required');
+if (!opt.manifest && !opt.page) fail('--manifest is required (or --page, to use the manifest of the player on that page)');
 for (const k of ['fps', 'scale', 'workers', 'max-seconds']) { opt[k] = Number(opt[k]); if (!(opt[k] > 0)) fail(`--${k} must be a positive number`); }
 if (!['overlay', 'composite', 'both'].includes(opt.mode)) fail('--mode is overlay, composite or both');
 if (!['prores', 'png', 'webm'].includes(opt.format)) fail('--format is prores, png or webm');
+if (opt.canvas) {
+  const m = /^(\d+)x(\d+)$/i.exec(opt.canvas);
+  if (!m || !+m[1] || !+m[2]) fail('--canvas is WxH in CSS px, e.g. 720x900');
+  STAGE_W = +m[1]; STAGE_H = +m[2];
+}
+const isUrl = (s) => /^https?:\/\//.test(s);
+const pageUrl = opt.page ? (isUrl(opt.page) ? opt.page : new URL(opt.page, opt.url).href) : '';
 
-const manifestFile = path.resolve(opt.manifest);
-const manifestDir = path.dirname(manifestFile);
-const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+const manifestFile = opt.manifest ? path.resolve(opt.manifest) : '';
+const manifestDir = manifestFile ? path.dirname(manifestFile) : '';
 const out = path.resolve(opt.out);
 fs.mkdirSync(out, { recursive: true });
 const W = Math.round(STAGE_W * opt.scale / 2) * 2, H = Math.round(STAGE_H * opt.scale / 2) * 2;
 const vars = Object.fromEntries(opt.var.map((s) => { const j = s.indexOf('='); if (j < 1) fail(`--var wants name=value, got ${s}`); return [s.slice(0, j), s.slice(j + 1)]; }));
 const t0 = Date.now();
 const log = (s) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${s}`);
+const manifest = manifestFile ? JSON.parse(fs.readFileSync(manifestFile, 'utf8')) : await manifestFromPage();
 
 // ---- plan ----
 const pathSpec = opt.choose !== undefined ? opt.choose.split(',').filter(Boolean) : opt.path === 'default' ? 'default' : opt.path.split(',').filter(Boolean);
@@ -54,12 +64,11 @@ const kinds = new Set(plan.cuts.map((c) => c.kind));
 // segments without a picture (none, audio) get the theme's --explainer-bg under the overlay in the composite (--bg overrides; black if neither)
 let bgColour = '';
 
-const isUrl = (s) => /^https?:\/\//.test(s);
-const resolveSrc = (s) => (isUrl(s) ? s : path.resolve(manifestDir, s));
+const resolveSrc = (s) => (isUrl(s) ? s : manifestFile ? path.resolve(manifestDir, s) : new URL(s, pageUrl).href); // page mode: relative to the page
 
 // cuts.json: lets an editor line the overlay up against the source
 fs.writeFileSync(path.join(out, 'cuts.json'), JSON.stringify({
-  manifest: manifestFile, path: pathSpec, fps: opt.fps, width: W, height: H, duration: plan.duration, frames: plan.frames.length, stop: plan.stop,
+  manifest: manifestFile || pageUrl, path: pathSpec, fps: opt.fps, width: W, height: H, duration: plan.duration, frames: plan.frames.length, stop: plan.stop,
   vars: plan.vars,
   cuts: plan.cuts.map((c) => ({ ...(c.src ? { sourceFile: resolveSrc(c.src) } : {}), ...c })),
 }, null, 2) + '\n');
@@ -102,29 +111,97 @@ async function loadPlaywright() {
   throw new Error('playwright not found (set PLAYWRIGHT=/path/to/playwright/index.mjs)');
 }
 
+// ---- --page: a player on a real page, rendered with that page's CSS and scene templates ----
+// Before any page script runs, every explainer-player gets the `render` attribute (and --canvas) as it is inserted, so it initialises as a render.
+function markPlayers(arg) {
+  const mark = (n) => {
+    if (n.nodeType !== 1) return;
+    const ps = n.localName === 'explainer-player' ? [n] : Array.from(n.querySelectorAll('explainer-player'));
+    for (const p of ps) { p.setAttribute('render', ''); if (arg.canvas) p.setAttribute('canvas', arg.canvas); }
+  };
+  new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach(mark))).observe(document, { childList: true, subtree: true });
+}
+
+/** Open the page, wait for the selected player, and make it the only visible thing: top-left, W px wide, nothing behind it. Returns the page and its theme background. */
+async function openRealPage(ctx, errors) {
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.addInitScript(markPlayers, { canvas: opt.canvas });
+  await page.goto(pageUrl, { waitUntil: 'load' });
+  try { await page.waitForFunction((sel) => document.querySelector(sel)?.clock, opt.selector, { timeout: 30000 }); }
+  catch { throw new Error(`no initialised <explainer-player> matching "${opt.selector}" on ${pageUrl}`); }
+  const bg = await page.evaluate(async ([sel, W]) => {
+    const p = document.querySelector(sel);
+    if (!p.hasAttribute('render')) throw new Error('the player was not marked as a render before it initialised');
+    const probe = document.createElement('i');
+    probe.style.color = getComputedStyle(p).getPropertyValue('--explainer-bg').trim() || 'transparent';
+    document.body.append(probe);
+    const [r, g, b, a = 1] = getComputedStyle(probe).color.match(/[\d.]+/g).map(Number);
+    probe.remove();
+    p.setAttribute('data-xr-player', '');
+    for (let n = p.parentElement; n && n !== document.documentElement; n = n.parentElement) n.setAttribute('data-xr-keep', '');
+    const s = document.createElement('style');
+    s.textContent = `html,body{background:transparent!important}
+      body *:not([data-xr-keep]):not([data-xr-player]):not([data-xr-player] *){visibility:hidden!important}
+      [data-xr-keep]{background:none!important;border-color:transparent!important;box-shadow:none!important}
+      explainer-player{--explainer-bg:transparent!important;position:fixed!important;left:0!important;top:0!important;width:${W}px!important;margin:0!important;z-index:2147483647}
+      *{transition:none!important;animation:none!important}`;
+    document.head.append(s);
+    await document.fonts.ready;
+    await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+    return a === 0 ? '' : '#' + [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, '0')).join('');
+  }, [opt.selector, STAGE_W]);
+  await page.evaluate((sel) => { window.__frame = (seg, t, vars) => document.querySelector(sel).renderFrame(seg, t, vars); }, opt.selector);
+  return { page, bg };
+}
+
+async function manifestFromPage() {
+  const { chromium } = await loadPlaywright();
+  const browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext({ viewport: { width: STAGE_W, height: STAGE_H }, reducedMotion: 'no-preference' });
+    const errors = [];
+    const { page } = await openRealPage(ctx, errors);
+    const m = await page.evaluate((sel) => JSON.parse(JSON.stringify(document.querySelector(sel).manifest)), opt.selector);
+    if (errors.length) throw new Error('page errors: ' + errors.slice(0, 3).join(' | '));
+    return m;
+  } finally { await browser.close(); }
+}
+
 async function renderFrames() {
-  await ensureServer();
   const { chromium } = await loadPlaywright();
   const rel = (p) => '/' + path.relative(root, path.resolve(p)).split(path.sep).join('/');
-  if (rel(manifestFile).startsWith('/..')) throw new Error('the manifest must be inside the repo (it is served by vite)');
-  const packs = opt.pack.length ? opt.pack : fs.existsSync(path.join(manifestDir, 'components.ts')) ? [path.join(manifestDir, 'components.ts')] : [];
-  const csss = opt.css.length ? opt.css : fs.existsSync(path.join(manifestDir, 'theme.css')) ? [path.join(manifestDir, 'theme.css')] : [];
-  const qs = new URLSearchParams();
-  qs.set('manifest', rel(manifestFile));
-  packs.forEach((p) => qs.append('pack', rel(p)));
-  csss.forEach((p) => qs.append('css', rel(p)));
-  const url = `${opt.url}/examples/render/index.html?${qs}`;
+  let url = '';
+  if (!pageUrl) {
+    await ensureServer();
+    if (rel(manifestFile).startsWith('/..')) throw new Error('the manifest must be inside the repo (it is served by vite)');
+    const packs = opt.pack.length ? opt.pack : fs.existsSync(path.join(manifestDir, 'components.ts')) ? [path.join(manifestDir, 'components.ts')] : [];
+    const csss = opt.css.length ? opt.css : fs.existsSync(path.join(manifestDir, 'theme.css')) ? [path.join(manifestDir, 'theme.css')] : [];
+    const qs = new URLSearchParams();
+    qs.set('manifest', rel(manifestFile));
+    packs.forEach((p) => qs.append('pack', rel(p)));
+    csss.forEach((p) => qs.append('css', rel(p)));
+    if (opt.canvas) qs.set('canvas', opt.canvas);
+    if (opt.scenes) qs.set('scenes', rel(opt.scenes));
+    url = `${opt.url}/examples/render/index.html?${qs}`;
+  }
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: STAGE_W, height: STAGE_H }, deviceScaleFactor: opt.scale, reducedMotion: 'no-preference' });
   const pages = [];
   const errors = [];
   for (let i = 0; i < Math.min(opt.workers, plan.frames.length); i++) {
-    const page = await ctx.newPage();
-    page.on('pageerror', (e) => errors.push(e.message));
-    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-    await page.goto(url);
-    await page.evaluate(() => window.__ready);
-    if (!bgColour) bgColour = opt.bg || (await page.evaluate(() => window.__bg)) || 'black';
+    let page, bg;
+    if (pageUrl) ({ page, bg } = await openRealPage(ctx, errors));
+    else {
+      page = await ctx.newPage();
+      page.on('pageerror', (e) => errors.push(e.message));
+      page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      await page.goto(url);
+      await page.evaluate(() => window.__ready);
+      bg = await page.evaluate(() => window.__bg);
+    }
+    if (!bgColour) bgColour = opt.bg || bg || 'black';
     pages.push(page);
   }
   if (errors.length) throw new Error('page errors: ' + errors.slice(0, 3).join(' | '));
