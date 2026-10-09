@@ -1,8 +1,7 @@
 import { fmtTime, pathSteps, type ChoiceStep, type PathStep, type SpanStep } from './path.ts';
 import type { ExplainerPlayer } from './player.ts';
+import { LEADING_PATH, PATH_ACCENT, PATH_FONT, PATH_INK, SIZE_PATH, WEIGHT_LABEL } from './theme.ts';
 
-const INK = 'var(--explainer-path-ink,var(--explainer-ink,inherit))';
-const ACCENT = 'var(--explainer-accent,currentColor)';
 const css = (...rules: string[]) => rules.join(';');
 
 /**
@@ -53,7 +52,7 @@ export class ExplainerPath extends HTMLElement {
     const c = p.clock;
     const steps = pathSteps(c.manifest, c.history, { segmentId: c.segmentId, t: c.t }, c.holding);
     const tree = this.getAttribute('mode') === 'tree';
-    this.setAttribute('style', css('display:block', `color:${INK}`, 'font-family:var(--explainer-font,inherit)', 'font-size:.9em', 'line-height:1.5'));
+    this.setAttribute('style', css('display:block', `color:${PATH_INK}`, `font-family:${PATH_FONT}`, `font-size:${SIZE_PATH}`, `line-height:${LEADING_PATH}`));
     this.replaceChildren(tree ? this.tree(steps, p) : this.crumbs(steps, p));
   }
 
@@ -68,17 +67,17 @@ export class ExplainerPath extends HTMLElement {
   private control(s: PathStep, p: ExplainerPlayer, text: string) {
     const label = (s.kind === 'choice' ? '◆ ' : '') + text;
     if (s.current) {
-      const span = this.el('span', 'font-weight:600', label);
+      const span = this.el('span', `font-weight:${WEIGHT_LABEL}`, label);
       span.setAttribute('aria-current', 'step');
       return span;
     }
-    const b = this.el('button', css('all:unset', 'display:inline-block', 'text-align:left', 'cursor:pointer', 'text-decoration:underline', 'text-decoration-color:transparent', 'text-underline-offset:.2em', `color:${INK}`), label);
+    const b = this.el('button', css('all:unset', 'display:inline-block', 'text-align:left', 'cursor:pointer', 'text-decoration:underline', 'text-decoration-color:transparent', 'text-underline-offset:.2em', `color:${PATH_INK}`), label);
     b.type = 'button';
     b.title = s.kind === 'choice' ? 'Back to this choice' : 'Rewind to here';
     b.tabIndex = 0;
-    b.onmouseenter = () => (b.style.textDecorationColor = ACCENT);
+    b.onmouseenter = () => (b.style.textDecorationColor = PATH_ACCENT);
     b.onmouseleave = () => (b.style.textDecorationColor = 'transparent');
-    b.onfocus = () => (b.style.textDecorationColor = ACCENT);
+    b.onfocus = () => (b.style.textDecorationColor = PATH_ACCENT);
     b.onblur = () => (b.style.textDecorationColor = 'transparent');
     b.onclick = () => p.rewind(s.depth, s.kind === 'choice');
     return b;
@@ -86,7 +85,7 @@ export class ExplainerPath extends HTMLElement {
 
   /** "▸ now m:ss" with a text node the animation loop updates. */
   private nowTag() {
-    const wrap = this.el('span', `color:${ACCENT};white-space:nowrap;margin-left:.5em`);
+    const wrap = this.el('span', `color:${PATH_ACCENT};white-space:nowrap;margin-left:.5em`);
     wrap.append('▸ ');
     this.now = this.el('span');
     this.nowText = fmtTime(this.player!.clock.t);

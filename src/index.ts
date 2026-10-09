@@ -7,6 +7,8 @@ import { initTriggers } from './triggers.ts';
 export * from './clock.ts';
 export * from './components/index.ts';
 export * from './store.ts';
+export * as theme from './theme.ts';
+export * as motion from './motion.ts';
 export * from './path.ts';
 export * from './render-plan.ts';
 export { ExplainerPlayer, ExplainerPath };
