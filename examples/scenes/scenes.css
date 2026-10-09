@@ -40,3 +40,40 @@ explainer-player > .scene { height: auto; min-height: 14rem; padding: 2rem; font
 explainer-player > .scene h1 { font-size: 2.4rem; }
 explainer-player > .scene .lede { font-size: 1.2rem; }
 explainer-player > .scene .note { font-size: 1.1rem; }
+
+/* ---- Media slots (the second player on the page) ---------------------------------------------------------------------------------
+   A slot is an ordinary layout box. The engine moves the one video to the active slot's rect; the site styles the video itself with
+   [data-explainer-media] (here: nothing, but a site could add filter: grayscale(1)). Slot boxes must not be transformed, and their
+   layout must not depend on --fx-p. */
+.scene { position: relative; }
+.scene .slot { position: absolute; box-sizing: border-box; border: 2px solid var(--ink); }
+.scene .slot-corner { top: 64px; right: 80px; width: 384px; height: 216px; }
+.scene .slot-full { inset: 0; border: 0; }
+.scene .slot-side { top: 72px; left: 72px; width: 520px; height: 576px; }
+.scene.hook { background: var(--ink); color: var(--paper); }
+.scene.hook h1 { font-size: 64px; line-height: 1.2; max-width: 980px; }
+.scene.side { padding-left: 660px; }
+.scene.zoom { background: #101010; }
+.scene.small h1 { max-width: 640px; }
+.scene.small .lede { max-width: 640px; }
+/* an "over" cue: text on the full-frame video; a transparent root with a scrim behind the words */
+.scene.over { background: linear-gradient(transparent 55%, rgb(0 0 0 / .72)); justify-content: flex-end; color: #fff; }
+.scene.over h1 { font-size: 64px; margin-bottom: 8px; }
+
+/* ---- Controls the site draws itself: icons from CSS, a hairline progress rule. They are light-DOM children of the player (not marked
+   data-explainer-poster, so they stay), laid out under the stage, and inherit --explainer-progress from the player. ---- */
+explainer-player#slots { position: relative; }
+#slots .controls { display: flex; align-items: center; gap: 20px; padding: 10px 16px; background: #1b1a18; color: #fff; font: 600 16px/1 system-ui, sans-serif; }
+#slots .big-play { display: none; position: absolute; left: 0; right: 0; top: 0; aspect-ratio: 16 / 9; place-items: center; pointer-events: none; }
+#slots[data-state="poster"] .big-play { display: grid; }
+#slots .big-play button { width: 96px; height: 96px; padding: 0; border: 0; border-radius: 50%; background: rgb(255 255 255 / .92); position: relative; pointer-events: auto; cursor: pointer; }
+#slots .big-play button::before { content: ''; position: absolute; left: 38px; top: 28px; border: 20px solid transparent; border-left: 32px solid #23221f; border-right: 0; }
+#slots .btn { width: 32px; height: 32px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; position: relative; }
+#slots .btn.toggle::before { content: ''; position: absolute; left: 9px; top: 5px; border: 11px solid transparent; border-left: 18px solid #fff; border-right: 0; }
+#slots[data-state="playing"] .btn.toggle::before { left: 8px; top: 6px; width: 5px; height: 20px; border: 0; background: #fff; box-shadow: 12px 0 0 #fff; }
+#slots .btn.restart::before { content: '\21BA'; font-size: 26px; line-height: 32px; }
+#slots .scrub { flex: 1; position: relative; height: 28px; cursor: pointer; touch-action: none; }
+#slots .scrub::before { content: ''; position: absolute; left: 0; right: 0; top: 13px; height: 2px; background: rgb(255 255 255 / .4); }
+#slots .scrub .fill { position: absolute; left: 0; top: 12px; height: 4px; width: calc(var(--explainer-progress, 0) * 100%); background: #fff; }
+#slots .scrub:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+#slots .time { font-variant-numeric: tabular-nums; min-width: 5em; text-align: right; }

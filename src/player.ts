@@ -1,6 +1,9 @@
 import { cueTextAt } from './captions.ts';
 import { Clock, cueProgress, type Cue, type Manifest } from './clock.ts';
 import { lookup, stillP, type Component } from './components/index.ts';
+import { slotsOf } from './components/scene.ts';
+import { displayText, playState, progressOf, type PlayState } from './controls.ts';
+import { boxStyle, mediaBoxAt, type Rect, type SceneSlots } from './media-slots.ts';
 import { canvasId, chooseCanvas, parseCanvas, type CanvasSpec } from './design-canvas.ts';
 import { stillTime } from './still.ts';
 import { gate, scopeFor, type Store } from './store.ts';
@@ -18,7 +21,7 @@ function ensureStyle() {
 }
 
 type Entry = { cue: Cue; comp: Component; node: Element; wrap: HTMLElement; data: Record<string, any>; shown: boolean };
-export type Command = { action: string; to?: string; rate?: number; t?: number; option?: string; depth?: number; hold?: boolean; on?: boolean; var?: string; value?: string };
+export type Command = { action: string; to?: string; rate?: number; t?: number; f?: number; by?: number; option?: string; depth?: number; hold?: boolean; on?: boolean; var?: string; value?: string };
 
 export class ExplainerPlayer extends HTMLElement {
   clock!: Clock;
@@ -43,6 +46,16 @@ export class ExplainerPlayer extends HTMLElement {
   private poster = false; // poster="still": painted at posterT until the first play, seek or jump
   private posterT = 0;
   private live = false;
+  private overlayOver: HTMLElement | null = null; // canvas only: cues with layer "over", above the media
+  private hasSlots = false; // slots mode: some scene carries a data-media-slot (then the media sits between the layers and follows the slots)
+  private sceneSlots: { cue: Cue; slots: ReturnType<typeof slotsOf> }[] = []; // scene cues that carry media slots (canvas only)
+  private slotModel: SceneSlots[] | null = null; // their measured rects, cached per canvas key
+  private mediaStyle = '';
+  private started = false; // false until the first play, seek or jump: the state is "poster"
+  private lastState = '';
+  private lastProgress = -1;
+  private lastTime: { seg: string; t: number } | null = null;
+  private lastDisplay = '';
 
   set manifest(m: Manifest) { this.pending = m; if (this.isConnected) this.init(m); }
   get manifest() { return this.clock.manifest; }
@@ -95,6 +108,15 @@ export class ExplainerPlayer extends HTMLElement {
     this.strip?.remove();
     this.live = false;
     this.canvasEl = null;
+    this.overlayOver = null;
+    this.sceneSlots = []; this.hasSlots = false;
+    this.slotModel = null;
+    this.mediaStyle = '';
+    this.started = false;
+    this.lastState = '';
+    this.lastProgress = -1;
+    this.lastTime = null;
+    this.lastDisplay = '';
     this.media = null;
     this.curSrc = '';
     this.strip = null;
@@ -107,7 +129,12 @@ export class ExplainerPlayer extends HTMLElement {
     const mq = matchMedia('(prefers-reduced-motion: reduce)');
     this.reduced = mq.matches && !this.hasAttribute('render');
     this.style.display = 'block';
-    const poster = Array.from(this.children).filter((c) => !['TEMPLATE', 'SCRIPT'].includes(c.tagName)); // the static first: hidden after the first paint
+    // the static first: hidden after the first paint. Children marked data-explainer-poster are the poster and the rest stay (controls);
+    // with none marked, every child other than <template> and <script> is the poster (the earlier behaviour)
+    const content = Array.from(this.children).filter((c) => !['TEMPLATE', 'SCRIPT'].includes(c.tagName));
+    const marked = content.filter((c) => c.hasAttribute('data-explainer-poster'));
+    const poster = marked.length ? marked : content;
+    const kept = marked.length ? content.filter((c) => !marked.includes(c)) : [];
     this.stage = document.createElement('div');
     this.specs = parseCanvas(this.getAttribute('canvas'));
     this.overlay = document.createElement('div');
@@ -116,7 +143,10 @@ export class ExplainerPlayer extends HTMLElement {
       // design canvas: layers live in a W x H CSS px box scaled to the stage width (see applyCanvas); captions stay outside it
       this.stage.setAttribute('style', 'position:relative;overflow:hidden;background:' + PAPER);
       this.canvasEl = document.createElement('div');
-      this.canvasEl.append(this.overlay);
+      // z-order: cues "under" (default), then the media (between, when scenes have slots), then cues "over"
+      this.overlayOver = document.createElement('div');
+      this.overlayOver.setAttribute('style', 'position:absolute;inset:0;pointer-events:none');
+      this.canvasEl.append(this.overlay, this.overlayOver);
       this.stage.append(this.canvasEl);
       this.layer = this.canvasEl;
     } else {
@@ -133,7 +163,7 @@ export class ExplainerPlayer extends HTMLElement {
       this.strip.hidden = true;
       this.strip.setAttribute('aria-live', 'off');
     }
-    this.append(this.stage);
+    this.insertBefore(this.stage, kept[0] ?? null); // kept children (a controls row) lay out after the stage
     this.applyCanvas(false);
     this.placeStrip();
 
@@ -152,10 +182,16 @@ export class ExplainerPlayer extends HTMLElement {
       const wrap = document.createElement('div');
       wrap.setAttribute('style', 'position:absolute;inset:0;pointer-events:none'); // interactive components opt back in
       wrap.hidden = true;
-      this.overlay.append(wrap);
+      (cue.layer === 'over' && this.overlayOver ? this.overlayOver : this.overlay).append(wrap);
       const data = { variant: cue.variant, ...cue.data };
       return { cue, comp, node: comp.mount(wrap, data), wrap, data, shown: false };
     });
+    // media slots (a canvas is needed: rects are in canvas px)
+    if (this.canvasEl) {
+      // every scene cue is in the model (a scene without slots still counts as "a scene is visible"); slots mode is on if any has a slot
+      this.sceneSlots = this.entries.flatMap((e) => (e.cue.renders.startsWith('com.semanticops.explainer/scene@') ? [{ cue: e.cue, slots: slotsOf(e.node) }] : []));
+      this.hasSlots = this.sceneSlots.some((x) => x.slots.length > 0);
+    }
     this.loadSegment();
     this.sig = '';
     this.pathChanged();
@@ -168,7 +204,18 @@ export class ExplainerPlayer extends HTMLElement {
       if (o) this.choose(o.id);
     };
     document.addEventListener('keydown', onKey);
-    this.cleanup.push(() => this.removeEventListener('explainer:command', onCmd), () => document.removeEventListener('keydown', onKey));
+    // click to play: a click on the stage toggles, unless it hit something interactive; the site can turn it off with click-to-play="false"
+    const onClick = (e: MouseEvent) => {
+      const mode = this.getAttribute('play');
+      if (this.getAttribute('click-to-play') === 'false' || mode === 'enter' || mode === 'scrub') return;
+      const el = e.target as Element;
+      if (!this.stage.contains(el) || el.closest('button,a,input,select,textarea,[data-explainer-action]')) return;
+      this.toggle();
+    };
+    this.addEventListener('click', onClick);
+    this.cleanup.push(() => this.removeEventListener('explainer:command', onCmd), () => document.removeEventListener('keydown', onKey), () => this.removeEventListener('click', onClick));
+    // web fonts change layout, so the measured slot rects too
+    document.fonts?.ready?.then(() => { if (this.live && this.hasSlots) { this.slotModel = null; this.paint(); } });
 
     // prefers-reduced-motion: play="enter|scrub" players do not animate, they sit at the still time of the first segment; reacts to changes
     let unbind = () => {};
@@ -229,7 +276,10 @@ export class ExplainerPlayer extends HTMLElement {
       this.media = null;
       if (want) {
         const el = document.createElement(want);
-        el.setAttribute('style', 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain');
+        // the engine styles position, size and fit only; with slots the box follows the active slot (paintMedia), else it fills the stage
+        el.setAttribute('data-explainer-media', '');
+        el.setAttribute('style', this.hasSlots && el instanceof HTMLVideoElement ? boxStyle({ hidden: true }) : 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain');
+        this.mediaStyle = '';
         el.preload = 'auto';
         // read at media creation only (not observed): <track> inherits the CORS mode of the media element
         if (this.hasAttribute('crossorigin')) el.crossOrigin = this.getAttribute('crossorigin') ?? '';
@@ -241,7 +291,7 @@ export class ExplainerPlayer extends HTMLElement {
             el.requestVideoFrameCallback(f);
           }
         }
-        this.layer.insertBefore(el, this.overlay);
+        this.layer.insertBefore(el, this.hasSlots && this.overlayOver ? this.overlayOver : this.overlay);
         this.media = el;
       }
     }
@@ -342,6 +392,7 @@ export class ExplainerPlayer extends HTMLElement {
     const key = `${canvasId(spec)}@${scale}`;
     if (key === el.getAttribute('data-key')) return;
     el.setAttribute('data-key', key);
+    this.slotModel = null; // slot rects are layout for this canvas: measured again
     this.spec = spec;
     el.setAttribute('data-canvas', canvasId(spec));
     el.setAttribute('style', `position:absolute;left:0;top:0;width:${spec.w}px;height:${spec.h}px;overflow:hidden;container-type:size;transform-origin:0 0;transform:scale(${scale})`);
@@ -349,16 +400,86 @@ export class ExplainerPlayer extends HTMLElement {
     if (repaint && this.live) this.paint();
   }
 
+  /** Whether cue `c` is shown at segment time `t`: the one test for painting and for the media slots, so they cannot disagree. */
+  private cueShown(c: Cue, t: number, vars: Record<string, string>) {
+    return !(c.hold && this.clock.playthrough) && c.segment === this.clock.segmentId && t >= c.start && t <= c.end && gate(c, vars);
+  }
+
   private paint() {
-    const { segmentId } = this.clock;
     const t = this.poster ? this.posterT : this.clock.t;
     const vars = this.store.all();
     for (const e of this.entries) {
       const c = e.cue;
-      const show = !(c.hold && this.clock.playthrough) && c.segment === segmentId && t >= c.start && t <= c.end && gate(c, vars);
+      const show = this.cueShown(c, t, vars);
       e.wrap.hidden = !show; // before render, so a cue measures its real size on its first frame
       if (show) e.comp.render(e.node as HTMLElement, this.reduced ? stillP(e.comp, e.data, c.items ?? [], c.end - c.start) : cueProgress(c, t), e.data, vars, c.items ?? [], c.end - c.start);
       if (show !== e.shown) { e.shown = show; this.emit(show ? 'explainer:cueenter' : 'explainer:cueexit', { cue: c.id }); }
+    }
+    if (this.hasSlots) this.paintMedia(t, vars);
+    this.paintControls();
+  }
+
+  /**
+   * Measure every slot (canvas px, relative to the canvas, divided by its scale) once per canvas key. A scene that is not shown is
+   * unhidden for the measurement and restored in the same synchronous frame, so a never-shown scene measures like a shown one.
+   */
+  private slotScenes(): SceneSlots[] {
+    if (this.slotModel) return this.slotModel;
+    const cv = this.canvasEl!.getBoundingClientRect();
+    const scale = cv.width && this.spec ? cv.width / this.spec.w : 1;
+    const wraps = new Map(this.entries.map((e) => [e.cue, e.wrap]));
+    const model = this.sceneSlots.map(({ cue, slots }) => {
+      const wrap = wraps.get(cue)!;
+      const was = wrap.hidden;
+      wrap.hidden = false;
+      const out = slots.map((s) => {
+        const r = s.el.getBoundingClientRect();
+        const rect: Rect = { x: (r.left - cv.left) / scale, y: (r.top - cv.top) / scale, w: r.width / scale, h: r.height / scale };
+        return { at: s.at, len: s.len, fit: s.fit, rect };
+      });
+      wrap.hidden = was;
+      return { start: cue.start, end: cue.end, slots: out };
+    });
+    if (cv.width) this.slotModel = model; // a zero-width (not laid out) canvas is not cached
+    return model;
+  }
+
+  /** The video box follows the active media slot (src/media-slots.ts); audio has no box, it plays on. */
+  private paintMedia(t: number, vars: Record<string, string>) {
+    const m = this.media;
+    if (!(m instanceof HTMLVideoElement) || !this.spec) return;
+    const model = this.slotScenes();
+    const cues = this.sceneSlots;
+    const box = mediaBoxAt(model, (i, T) => this.cueShown(cues[i].cue, T, vars), { x: 0, y: 0, w: this.spec.w, h: this.spec.h }, t);
+    const style = boxStyle(box);
+    if (style !== this.mediaStyle) { this.mediaStyle = style; m.setAttribute('style', style); }
+  }
+
+  private get state(): PlayState {
+    const c = this.clock;
+    return playState({ started: this.started, playing: c.playing, holding: !!c.holding, t: c.t, length: c.length });
+  }
+
+  /** data-state, --explainer-progress, explainer:time and the time readouts. Writes only what changed. */
+  private paintControls() {
+    if (this.hasAttribute('render')) return;
+    const c = this.clock, len = c.length, t = c.t;
+    const st = this.state;
+    if (st !== this.lastState) { this.lastState = st; this.setAttribute('data-state', st); }
+    const pr = progressOf(t, len);
+    if (pr !== this.lastProgress) { this.lastProgress = pr; this.style.setProperty('--explainer-progress', String(pr)); }
+    const lt = this.lastTime;
+    if (!lt || lt.t !== t || lt.seg !== c.segmentId) {
+      this.lastTime = { seg: c.segmentId, t };
+      this.emit('explainer:time', { segmentId: c.segmentId, t, duration: len });
+      const key = `${c.segmentId}|${displayText('time', t, len)}|${displayText('remaining', t, len)}|${displayText('duration', t, len)}`;
+      if (key !== this.lastDisplay) {
+        this.lastDisplay = key;
+        this.querySelectorAll('[data-explainer-display]').forEach((el) => {
+          const text = displayText(el.getAttribute('data-explainer-display') ?? '', t, len);
+          if (text !== null && el.textContent !== text) el.textContent = text;
+        });
+      }
     }
   }
 
@@ -424,9 +545,24 @@ export class ExplainerPlayer extends HTMLElement {
   }
 
   /** Every navigation ends the poster (`poster="still"`) and starts from the normal position; pause alone leaves it. */
-  private act(fn: () => void, leavePoster = true) { if (leavePoster) this.poster = false; fn(); this.syncMedia(true); this.pathChanged(); }
+  private act(fn: () => void, leavePoster = true) { if (leavePoster) { this.poster = false; this.started = true; } fn(); this.syncMedia(true); this.pathChanged(); }
   play() { this.act(() => this.clock.play()); }
   pause() { this.act(() => this.clock.pause(), false); }
+  /** Play, or pause. From the poster or the end it plays from the start; while a choice is held it does nothing (choose first). */
+  toggle() {
+    const s = this.state;
+    if (s === 'playing') this.pause();
+    else if (s === 'ended') this.restart();
+    else if (s !== 'holding') this.play();
+  }
+  /** Go to the start of the explainer (history cleared) and play. */
+  restart() {
+    this.act(() => {
+      this.clock.rewindTo(0);
+      if (this.clock.rate < 0) this.clock.setRate(1);
+      this.clock.play();
+    });
+  }
   seek(t: number) { this.act(() => this.clock.seek(t)); }
   setRate(r: number) { this.act(() => this.clock.setRate(r)); }
   jumpTo(id: string) { this.act(() => this.clock.jumpTo(id)); }
@@ -443,6 +579,10 @@ export class ExplainerPlayer extends HTMLElement {
     switch (d.action) {
       case 'play': return this.play();
       case 'pause': return this.pause();
+      case 'toggle': return this.toggle();
+      case 'restart': return this.restart();
+      // a pointer or key on a scrub slider: `f` a fraction of the current segment, `by` seconds from here
+      case 'scrub': return this.seek(d.f != null ? d.f * this.clock.length : this.clock.t + (d.by ?? 0));
       case 'seek': return d.to ? this.jumpTo(d.to) : this.seek(d.t ?? 0);
       case 'rate': this.setRate(d.rate ?? 1); return this.play(); // setting a rate starts playback
       case 'jump': return this.jumpTo(d.to!);
