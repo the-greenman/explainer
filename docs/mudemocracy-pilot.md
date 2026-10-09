@@ -1,55 +1,56 @@
-# muDemocracy pilot: guide 1.1 explainer, theme and component library
+# muDemocracy pilot: guide 1.1 explainer
 
-> Decided by the owner on 2026-10-09. The work is tracked in **the-greenman/muDemocracy.org#309** (epic) and its sub-issues #310–#322, not in this repo. PRs here reference those issues. The workflow, gates and definition of done are in the epic. This file records the design.
+> Tracked in **the-greenman/muDemocracy.org#309** (epic) and its sub-issues, not in this repo. PRs here reference those issues. This file records the design as built. The first plan (generic components re-skinned through theme tokens, text cards over a talking head) was replaced on 2026-10-09 after owner review, because themed approximations could not match the site's styleguide.
 
-## Decisions
-- **The first explainer is guide 1.1, Decision Recording** (`guide-1ff0ab83`, slug `decision-recording`).
-- **The two clips in `examples/video/` are its opening segments.** `intro` (38.6 s) is the hook and the four questions. `purpose` (48.7 s) is debate → decide → forget → repeat, and "clear, visible, useful".
-- **The remaining segments (about 3.5 min) follow the guide sections:**
-  - Process
-  - How to do this in a meeting
-  - What to record
-  - Example
-  - What makes this example work
-  - Things to watch out for
+## Status
+- **Live (unlisted, noindex)** at https://mudemocracy.org/decision-recording, on engine v0.3.0.
+- It plays the owner's two recorded clips (1:27) choreographed as eight scenes.
+- **Verified in production:** Chromium and Firefox. Safari still needs a real-device check.
 
-  The script and storyboard are #315.
-- **muDemocracy.org's `src/styles/tokens.css` is the brand authority.** This repo maps onto it and never defines brand values. A value the contract needs that tokens.css lacks, such as motion tokens, is proposed for tokens.css.
-- **Tracking lives in muDemocracy.org.** Code stays here until the publish issue (#322), which is the move-over.
+## The idea: the page, performed
+- **Every scene is the site's own markup and CSS, revealed by motion.** A scene is a `<template data-scene>` rendered by Astro from the site's components (`DecisionRecordCard`, `NumberedList`, `.hl mark`). The engine clones it into the player and only reveals what is there. It never builds or restyles brand markup, so the explainer cannot drift from the site.
+- **A scene with no motion is exactly the page,** which covers print, no-JS and reduced motion. The explainer's poster is the opening scene's still, so before play it reads as page copy.
+- **The explainer is a page component.** It can sit straight after the hero or anywhere else, and a page can hold several.
+- **One edited video per explainer** (the owner's edit). Scenes cover it except where the face shows. The face is used occasionally: hidden for the hook, small in a corner, zoomed to full frame, beside the text like the hero image, or full frame with text over it.
 
-## One library, two surfaces
-- **Components are the existing pure `render(node, p, data, vars, items, dur)` functions with named variants.** They read only theme tokens.
-- **The same component serves both surfaces:**
-  - **Website:** an `<explainer-player play="enter|scrub">` with a `none` segment. It's in-place animation, not a video.
-  - **Video:** an overlay cue on a `video` or `audio` segment, and in the offline render.
-- **`meta.surfaces`** is `web`, `video` or both (#313). Video-only elements, such as burned-in captions, title cards and layouts tied to the speaker's frame, are `video`-only components, not a separate library.
-- **p=1 is a complete static frame.** It is what print, no-JS and `prefers-reduced-motion` show (#313).
+## Engine pieces (this repo, brand-neutral)
+| Piece | Since | What |
+|---|---|---|
+| `scene@1` | 0.2.0 | Clones `<template data-scene>` from inside the player, else the document. Transitions are `cut`, `fade`, `wipe` and `wipe-left`. |
+| Choreography | 0.2.0 | Elements carry `data-at`, `data-for` and `data-fx`. The engine sets `--fx-p` (0..1) on each. The built-ins are `fade`, `rise`, `write`, `wipe` and `words`. Any other name is the site's own CSS reading `var(--fx-p, 1)`, e.g. muDemocracy's `hl-draw` highlighter. |
+| Design canvas | 0.2.0 | `canvas="1280x720 400x500@<600"`: a fixed layout size, roughly the display size, so the site's px tokens hold. It is scaled to fit and switched by player width. |
+| Poster | 0.2.0 | `poster="still"`. Children marked `data-explainer-poster` are the static poster; other children (controls) are kept. |
+| Media slots | 0.2.0 | `data-media-slot` boxes in scene markup, timed like the choreography. The video takes the active slot's rect and eases between slots. With no slot the video is hidden while the audio continues; with no scene it fills the canvas. |
+| Layers | 0.2.0 | `under` cues (opaque scenes), then the video, then `over` cues (text on the video). |
+| Control API | 0.2.0 | `toggle`, `restart`, pointer and keyboard `scrub`, `captions`; `data-state`, `data-captions`, `--explainer-progress`, `explainer:time` and `data-explainer-display` readouts. The site draws the controls. |
+| Caption strip | 0.3.0 | With slots, captions show in a strip below the stage, from the clock, so they are readable when the video is small or hidden. It is styled by the site. |
+| Offline render | 0.3.0 | `--page` renders the real site page. Overlay mode cuts a transparent hole at the media box and writes `media.json`. Composite mode is drawn in the browser, frame-exact. |
 
-## Theme contract (#310, #311)
-- **These are CSS custom properties.** The player uses light DOM, so the host page's CSS reaches it. The core already reads `--explainer-ink`, `--explainer-accent`, `--explainer-bg` and `--explainer-font`. The contract formalises and extends them:
-  - **Colour roles:** ink, paper, accent, highlight, muted, line, card, card-ink. `card` and `card-ink` are for text over a picture.
-  - **Type:** family, mono, and a stage scale in container units.
-  - **Stage:** safe-area insets, and the side columns that keep overlays clear of the speaker's face (x 27–70 %).
-  - **Motion:** named durations and easings. Pure renders need curves as JS functions, so the theme names the curve and the code holds the function.
-- **No literals in core components.** For example, `intro.ts` hard-codes `rgba(12,14,22,.7)` and `#fff` today.
-- **The muDemocracy theme is one file in muDemocracy.org `src/motion/` that only maps values:** paper, ink, highlighter `#f2ff36`, IBM Plex Sans and Mono.
+## Site pieces (muDemocracy.org `src/motion/`)
+- **`Explainer.astro`:** the player, the poster, the scene templates, the inline manifest, and the controls (disc icons, a hairline progress rule, a mono time readout, CC).
+- **`scenes/*.astro`:** one per scene, with timings in `decisionRecording.timeline.ts`, each hung on a caption line.
+- **`motion.css`:** site effects (`hl-draw`), slot boxes, the greyscale video and the caption strip, all from `tokens.css`.
+- **Overrides of a site component's styles** use a doubled scene class. Bundled CSS order differs between dev and production, so equal specificity is not safe.
+- **The `/styleguide` Motion section** shows scene stills.
 
-## Packs
-- **Core** (`src/components/`): brand-neutral primitives. The likely additions from the storyboard are a highlighter stroke, a table reveal, an example card and a callout (#317).
-- **muDemocracy pack** (`muDemocracy.org/src/motion/`, owner decision 2026-10-09, muDemocracy.org#309; see CLAUDE.md "Engine and site packs"): the theme mapping `tokens.css` onto `--explainer-*`, brand elements such as the logo, decision-record card and debate cycle (the cycle in `examples/video/` is a stand-in), and the manifests. It is not in this repo; the site depends on this repo by git tag.
+## Media
+- R2 bucket `mudemocracy-video` on `media.mudemocracy.org`, which is separate from the CMS bucket.
+- Paths are versioned (`explainers/<slug>/v<N>/`): a new edit is a new `v<N>`, never an overwrite, because objects are cached as immutable for a year.
+- Range requests are supported. CORS allows the site and localhost dev.
+- The player and the poster video both use `crossorigin="anonymous"`. A non-CORS poster request otherwise poisons the browser cache for the player's request.
+- **Installing the engine:** the site installs it as `git+https://github.com/the-greenman/explainer.git#vX.Y.Z`. The lockfile must say `git+https`, because the Cloudflare build has no SSH key. npm 12 needs `allow-git=all` and an `allowScripts` approval, pinned to the tag's commit.
 
-## Styleguide (#312, #314)
-- **The styleguide is a harness in this repo** (`explainer/styleguide`, #325) that the site mounts in its own page with its pack, fixtures and theme CSS (`muDemocracy.org/src/motion/`). It shows every component and variant with a scrubber, in a web column, on the 16:9 stage and as a phone embed, with a switch between the site theme and the default. This repo's own page uses a neutral sample theme.
-- **A script writes the review frames:** p = 0, 0.5 and 1 on both surfaces. The owner approves components from these frames.
-- **The style rules** cover:
-  - colour roles
-  - the smallest type size on stage
-  - text over video on a paper card, not a dark scrim
-  - motion principles, proposed as: ink writes, the highlighter draws on, motion explains or else stays still, and entrances follow the speech
+## Workflow for each explainer
+1. **Script and page together** (owner). Write the narration as beats against the page's sections.
+2. **Scene list.** For each beat: the site component, what moves, the caption line, and the face or the full-frame scene.
+3. **Build the scenes** in the site. Each is viewable statically as it is built.
+4. **Animatic.** Scratch narration and the scenes, on the real page. The owner reviews pacing here.
+5. **The owner's edit:** one video.
+6. **Retime** to the edit's captions, then the review cut. Render (composite for YouTube and social, overlay plus `media.json` for an editor) in both canvases.
+7. **Publish:** upload the media to a new `v<N>` path, and the page goes live.
 
-## Order
-1. Theme contract, then the muDemocracy theme, then the styleguide. The script and storyboard run alongside.
-2. Restyle the two segments (#316).
-3. Build the storyboard's components.
-4. SRS types for the settled components (plan step 3, #318). This comes after real use has settled the components' shapes, and that is why it now follows the pilot work instead of preceding it.
-5. Animatic, then recording, then the review cut, then publishing.
+## Open
+- **Safari** (macOS and iOS) on a real device.
+- **The owner's script and scene list** (muDemocracy.org#315) decide the rest of guide 1.1.
+- **The copy and CTA** on the page are drafts.
+- **SRS types** (plan step 3, muDemocracy.org#318) come once the scene and manifest shapes settle.
