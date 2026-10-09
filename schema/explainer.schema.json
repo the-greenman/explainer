@@ -23,7 +23,8 @@
           "out": { "type": "number", "minimum": 0, "description": "End in media seconds; for kind none, out - in is the duration." },
           "captions": { "type": "string", "description": "WebVTT URL" },
           "next": { "type": ["string", "null"], "description": "Segment or marker id; null = no continuation; absent = next in array order." },
-          "ends": { "enum": ["continue", "stop"], "default": "continue" }
+          "ends": { "enum": ["continue", "stop"], "default": "continue" },
+          "still": { "type": "number", "minimum": 0, "description": "Static-frame time in seconds within the segment (print, prefers-reduced-motion). Default: the latest cue still, see README." }
         }
       }
     },

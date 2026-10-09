@@ -1,6 +1,7 @@
 import { cueTextAt } from './captions.ts';
 import { Clock, cueProgress, type Cue, type Manifest } from './clock.ts';
-import { lookup, type Component } from './components/index.ts';
+import { lookup, stillP, type Component } from './components/index.ts';
+import { stillTime } from './still.ts';
 import { gate, scopeFor, type Store } from './store.ts';
 import { bindPlayMode } from './triggers.ts';
 import { CAPTION_INK, CAPTION_OVER, CAPTION_PAPER, FONT_FAMILY, LEADING_CAPTION, PAPER, SIZE_CAPTION, SIZE_CAPTION_OVER } from './theme.ts';
@@ -70,7 +71,8 @@ export class ExplainerPlayer extends HTMLElement {
   private init(m: Manifest) {
     this.teardown();
     this.store = scopeFor(this);
-    this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const mq = matchMedia('(prefers-reduced-motion: reduce)');
+    this.reduced = mq.matches && !this.hasAttribute('render');
     this.style.display = 'block';
     this.stage = document.createElement('div');
     // container-type: components size text and layout in cqw, so a stage looks the same at any width (and in the offline render)
@@ -119,7 +121,27 @@ export class ExplainerPlayer extends HTMLElement {
       if (o) this.choose(o.id);
     };
     document.addEventListener('keydown', onKey);
-    this.cleanup.push(() => this.removeEventListener('explainer:command', onCmd), () => document.removeEventListener('keydown', onKey), bindPlayMode(this));
+    this.cleanup.push(() => this.removeEventListener('explainer:command', onCmd), () => document.removeEventListener('keydown', onKey));
+
+    // prefers-reduced-motion: play="enter|scrub" players do not animate, they sit at the still time of the first segment; reacts to changes
+    let unbind = () => {};
+    const applyMode = () => {
+      unbind();
+      this.reduced = mq.matches && !this.hasAttribute('render');
+      unbind = bindPlayMode(this, this.reduced);
+      if (this.reduced && ['enter', 'scrub'].includes(this.getAttribute('play') ?? '')) this.showStill(true);
+    };
+    mq.addEventListener('change', applyMode);
+    this.cleanup.push(() => { mq.removeEventListener('change', applyMode); unbind(); });
+    applyMode();
+
+    // print: every player pauses at the still time of its current segment, and afterwards goes back where it was
+    let saved: ReturnType<ExplainerPlayer['snapshot']> | null = null;
+    const before = () => { saved ??= this.snapshot(); this.showStill(false); };
+    const after = () => { if (saved) this.restore(saved); saved = null; };
+    addEventListener('beforeprint', before);
+    addEventListener('afterprint', after);
+    this.cleanup.push(() => { removeEventListener('beforeprint', before); removeEventListener('afterprint', after); });
 
     this.last = performance.now();
     if (this.hasAttribute('render')) return; // offline render: no loop, frames are placed with renderFrame()
@@ -256,7 +278,7 @@ export class ExplainerPlayer extends HTMLElement {
       const c = e.cue;
       const show = !(c.hold && this.clock.playthrough) && c.segment === segmentId && t >= c.start && t <= c.end && gate(c, vars);
       e.wrap.hidden = !show; // before render, so a cue measures its real size on its first frame
-      if (show) e.comp.render(e.node as HTMLElement, this.reduced ? 1 : cueProgress(c, t), e.data, vars, c.items ?? [], c.end - c.start);
+      if (show) e.comp.render(e.node as HTMLElement, this.reduced ? stillP(e.comp, e.data, c.items ?? [], c.end - c.start) : cueProgress(c, t), e.data, vars, c.items ?? [], c.end - c.start);
       if (show !== e.shown) { e.shown = show; this.emit(show ? 'explainer:cueenter' : 'explainer:cueexit', { cue: c.id }); }
     }
   }
@@ -275,6 +297,51 @@ export class ExplainerPlayer extends HTMLElement {
     c.playing = false;
     c.t = t;
     this.paint();
+  }
+
+  /** The still time (seconds) of segment `id`, default the current one: `segment.still` or the latest cue still (src/still.ts). */
+  stillTime(id = this.clock.segmentId) {
+    const m = this.clock.manifest;
+    return stillTime(m.segments.find((s) => s.id === id)!, m.cues, lookup);
+  }
+
+  /**
+   * Pause on the static frame. `first`: of the first segment (reduced motion, goes through normal navigation);
+   * otherwise of the current segment, placed directly like renderFrame so that history is untouched (print; see restore()).
+   */
+  private showStill(first: boolean) {
+    const c = this.clock;
+    if (first) {
+      const id = c.manifest.segments[0].id;
+      this.pause();
+      if (c.segmentId !== id) this.jumpTo(id);
+      this.seek(this.stillTime(id));
+      return;
+    }
+    this.place(c.segmentId, this.stillTime(c.segmentId), null, false);
+  }
+
+  private place(segmentId: string, t: number, holding: Cue | null, playing: boolean) {
+    const c = this.clock;
+    const changed = c.segmentId !== segmentId;
+    c.segmentId = segmentId;
+    c.t = t;
+    c.holding = holding;
+    c.playing = playing;
+    if (changed) this.loadSegment();
+    this.syncMedia(true);
+    this.pathChanged();
+    this.paint();
+  }
+
+  private snapshot() {
+    const c = this.clock;
+    return { segmentId: c.segmentId, t: c.t, playing: c.playing, holding: c.holding, history: c.history.slice() };
+  }
+
+  private restore(s: ReturnType<ExplainerPlayer['snapshot']>) {
+    this.clock.history = s.history;
+    this.place(s.segmentId, s.t, s.holding, s.playing);
   }
 
   private act(fn: () => void) { fn(); this.syncMedia(true); this.pathChanged(); }

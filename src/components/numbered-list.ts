@@ -7,7 +7,9 @@ import { ACCENT, CARD, CARD_INK, SAFE, SIDE_WIDTH, SIZE_ITEM, SIZE_PANEL_HEADING
 const text = (it: any) => (typeof it === 'string' ? it : it.text ?? it.label ?? '');
 
 export const numberedList: Component = {
-  meta: { renders: 'com.semanticops.explainer/numbered-list@1', name: 'Numbered list', variants: ['default', 'panel'] },
+  meta: { renders: 'com.semanticops.explainer/numbered-list@1', name: 'Numbered list', variants: ['default', 'panel'], surfaces: ['web', 'video'],
+    // panel fades out over the last 0.4 s: the still is the moment before that (the list is in by then)
+    still: (data, _items, dur) => (data.variant === 'panel' ? Math.max(0, (dur - 0.4) / dur) : 1) },
   mount(host) {
     const root = host.ownerDocument.createElement('div');
     root.innerHTML = '<h2></h2><ol></ol>';

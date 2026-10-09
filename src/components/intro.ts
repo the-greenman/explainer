@@ -5,7 +5,9 @@ import { fade, FADE_OFFSET_CARD } from '../motion.ts';
 import { ACCENT, CARD, CARD_INK, LEADING_SUB, LEADING_TITLE, SAFE, LOWER_WIDTH, SIZE_BYLINE, SIZE_CARD_NOTE, SIZE_CARD_SUB, SIZE_CARD_TITLE, SIZE_HEADING, SIZE_SUBTITLE, SIZE_TITLE } from '../theme.ts';
 
 export const intro: Component = {
-  meta: { renders: 'com.semanticops.explainer/intro@1', name: 'Intro', variants: ['default', 'minimal', 'lower-third'] },
+  meta: { renders: 'com.semanticops.explainer/intro@1', name: 'Intro', variants: ['default', 'minimal', 'lower-third'], surfaces: ['web', 'video'],
+    // lower-third fades out over p 0.92-1, so p=1 is blank
+    still: (data) => (data.variant === 'lower-third' ? 0.5 : 1) },
   mount(host, data) {
     const d = host.ownerDocument;
     const root = d.createElement('div');

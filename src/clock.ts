@@ -1,6 +1,6 @@
 // Pure clock logic: no DOM. Position is {segmentId, t}; t is seconds within the segment.
 export type Option = { id: string; label?: string; goes_to?: string; sets_variable?: string; sets_value?: string; default?: boolean };
-export type Segment = { id: string; title?: string; kind: 'video' | 'audio' | 'none'; src?: string; in?: number; out: number; captions?: string; next?: string | null; ends?: 'continue' | 'stop' };
+export type Segment = { id: string; title?: string; kind: 'video' | 'audio' | 'none'; src?: string; in?: number; out: number; captions?: string; next?: string | null; ends?: 'continue' | 'stop'; still?: number };
 export type Marker = { id: string; segment: string; t: number; label?: string };
 export type Cue = {
   id: string; segment: string; start: number; end: number; renders: string; variant?: string;
