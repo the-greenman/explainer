@@ -1,8 +1,10 @@
 # Changelog
 
-All notable changes to this project are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases are git tags `vX.Y.Z` on `main` (see README, "Releases"); nothing has been tagged yet.
+All notable changes to this project are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases are git tags `vX.Y.Z` on `main` (see README, "Releases").
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-10-09
 
 ### Added
 - Media slots and controls for scenes. `data-media-slot` (with `data-at`, `data-for`, `data-media-fit`) in a scene template: the video follows the active slot's rect on the design canvas with an ease-in-out between slots, is hidden when no slot is active and fills the canvas when no scene is shown; pure `mediaBoxAt` (`src/media-slots.ts`), measured once per canvas key. Media element has `data-explainer-media`. Cue `layer: "under" | "over"` (schema): under cues, then the media, then over cues. Control API: actions `toggle`, `restart`, `scrub` (pointer drag and keyboard on `data-explainer-action="scrub"`, with slider aria), `data-state="poster|playing|paused|ended|holding"`, `--explainer-progress`, event `explainer:time`, `data-explainer-display="time|duration|remaining"` readouts, click-to-play on the stage (`click-to-play="false"` to turn off). Scene transitions `wipe` and `wipe-left`, and `data-fx="words"` (word-by-word write in reading order). Only light-DOM children marked `data-explainer-poster` are the poster, so other children (controls) stay; with none marked the earlier behaviour holds. Example `examples/scenes/` (+ `prepare.sh`). (the-greenman/muDemocracy.org#330)

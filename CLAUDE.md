@@ -75,16 +75,17 @@ This file gives project context for agents working in this repo. Read it before 
 - **Session role:** the session orchestrates, and Sonnet subagents do the unit work. Give each one a precise brief and review its output; never trust its report alone. The gallery 404 and the click-swallowing layer bug were both missed in agent reports.
 
 ## Current state
-- **Done:** plan step 2. That covers the clock, player, triggers, store, core components and gallery, plus the two capability probes, with their core fixes. Everything is on `main`.
-- **Real media:** video is verified with real clips in `examples/video/`: forward, rate, reverse, scrub, segment switch, and hold with `loop_from`. Audio-only segments are verified with a real file in the workshop's `tarot` example (same measurements, plus the caption strip and the offline render). Safari, Firefox, phones and R2 delivery are also untested.
+- **Released v0.2.0** (2026-10-09): theme and component contracts, `<explainer-motion>`, the styleguide harness, scenes (site markup revealed by motion), the design canvas, the poster still, media slots, over layers and the control API. See `CHANGELOG.md`.
+- **Plan revised** (owner, 2026-10-09; muDemocracy.org#309): an explainer is the page, performed. Scenes are the site's own markup and CSS, revealed by choreography (`data-at`/`data-for`/`data-fx`, `--fx-p`); the video's size and position follow `data-media-slot` boxes. The engine never builds or restyles brand markup.
+- **First playable page:** `/decision-recording` in muDemocracy.org (branch `feat/328-decision-recording-page`), with the owner's two recorded clips choreographed across 1:27.
+- **Real media:** video is verified with real clips, in `examples/video/` and on the site page. Audio-only is verified in the workshop's `tarot` example. Safari, Firefox, phones and R2 delivery are untested.
 
 ## Next steps
-1. **muDemocracy pilot: guide 1.1, Decision Recording.** The design is in `docs/mudemocracy-pilot.md`. Tracking is in **the-greenman/muDemocracy.org#309** and its sub-issues, so PRs here reference those (`Refs the-greenman/muDemocracy.org#N`).
-   - First come the theme contract (#310), the muDemocracy theme mapped from muDemocracy.org `tokens.css` (#311, which is the brand authority), the component contract (#313) and the styleguide (#314).
-   - The script and storyboard (#315) run alongside, and they decide which components get built (#317).
-2. **SRS package (plan step 3, #318)**, after the pilot's components settle.
-   - `srs/` holds the `com.semanticops.explainer` types: segment, marker, component types, choice/choice-option, variable, and the `goes-to` relation type.
+1. **muDemocracy pilot: guide 1.1.** Tracking is in **the-greenman/muDemocracy.org#309** and its sub-issues; PRs here reference those (`Refs the-greenman/muDemocracy.org#N`).
+   - Engine gaps found on the page: captions for video in a strip under the stage (native cues vanish when the video is small or hidden); overlay-only render must leave the video's slot transparent.
+   - The owner's script and scene list (#315) decide the remaining scenes.
+2. **SRS package (plan step 3, #318)**, after the pilot's scene and manifest shapes settle.
+   - `srs/` holds the `com.semanticops.explainer` types: segment, marker, cue (scene, layer), choice/choice-option, variable, and the `goes-to` relation type.
    - Add specimen records and a generic `scripts/export.mjs` (srs CLI → manifest), then replace the placeholder `renders` refs.
    - Write only through the srs CLI or MCP and validate after each batch. No CLI or MCP command writes `packageDependencies` yet (srs-rust#1168).
-3. **The muDemocracy pack moves into muDemocracy.org now**, not at the end. Publishing on the guide page (#322) is then only the video.
-4. **Open gaps** are in `docs/findings.md`. Add them when the pilot needs them.
+3. **Open gaps** are in `docs/findings.md`. Add them when the pilot needs them.
