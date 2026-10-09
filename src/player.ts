@@ -3,7 +3,7 @@ import { Clock, cueProgress, type Cue, type Manifest } from './clock.ts';
 import { lookup, stillP, type Component } from './components/index.ts';
 import { slotsOf } from './components/scene.ts';
 import { displayText, playState, progressOf, type PlayState } from './controls.ts';
-import { boxStyle, mediaBoxAt, type Rect, type SceneSlots } from './media-slots.ts';
+import { boxStyle, holePolygon, mediaBoxAt, type MediaBox, type Rect, type SceneSlots } from './media-slots.ts';
 import { canvasId, chooseCanvas, parseCanvas, type CanvasSpec } from './design-canvas.ts';
 import { stillTime } from './still.ts';
 import { gate, scopeFor, type Store } from './store.ts';
@@ -51,6 +51,8 @@ export class ExplainerPlayer extends HTMLElement {
   private sceneSlots: { cue: Cue; slots: ReturnType<typeof slotsOf> }[] = []; // scene cues that carry media slots (canvas only)
   private slotModel: SceneSlots[] | null = null; // their measured rects, cached per canvas key
   private mediaStyle = '';
+  private renderBox: MediaBox | null = null; // render mode: the media box of the last renderFrame (null: no video segment)
+  private renderMedia: HTMLVideoElement | null = null; // render mode, composite: the video the renderer drives
   private started = false; // false until the first play, seek or jump: the state is "poster"
   private lastState = '';
   private lastProgress = -1;
@@ -121,6 +123,7 @@ export class ExplainerPlayer extends HTMLElement {
     this.sceneSlots = []; this.hasSlots = false;
     this.slotModel = null;
     this.mediaStyle = '';
+    this.renderBox = null; this.renderMedia = null;
     this.started = false;
     this.lastState = '';
     this.lastProgress = -1;
@@ -473,13 +476,53 @@ export class ExplainerPlayer extends HTMLElement {
 
   /** The video box follows the active media slot (src/media-slots.ts); audio has no box, it plays on. */
   private paintMedia(t: number, vars: Record<string, string>) {
+    if (!this.spec) return;
+    if (this.hasAttribute('render')) return this.paintRenderMedia(t, vars);
     const m = this.media;
-    if (!(m instanceof HTMLVideoElement) || !this.spec) return;
+    if (!(m instanceof HTMLVideoElement)) return;
+    const style = boxStyle(this.boxAt(t, vars));
+    if (style !== this.mediaStyle) { this.mediaStyle = style; m.setAttribute('style', style); }
+  }
+
+  private boxAt(t: number, vars: Record<string, string>) {
     const model = this.slotScenes();
     const cues = this.sceneSlots;
-    const box = mediaBoxAt(model, (i, T) => this.cueShown(cues[i].cue, T, vars), { x: 0, y: 0, w: this.spec.w, h: this.spec.h }, t);
-    const style = boxStyle(box);
-    if (style !== this.mediaStyle) { this.mediaStyle = style; m.setAttribute('style', style); }
+    return mediaBoxAt(model, (i, T) => this.cueShown(cues[i].cue, T, vars), { x: 0, y: 0, w: this.spec!.w, h: this.spec!.h }, t);
+  }
+
+  /**
+   * Offline render with slots: there is no media element. The box is the same pure function of the clock as live.
+   * Without an attached render video (overlay mode) the under layer gets a hole exactly over the box, so footage placed under the
+   * overlay shows through; with one (composite mode, `attachRenderMedia`) the video is placed like the live element and there is no hole.
+   * A frame with no video segment has no box and no hole.
+   */
+  private paintRenderMedia(t: number, vars: Record<string, string>) {
+    const box = this.clock.segment.kind === 'video' ? this.boxAt(t, vars) : null;
+    this.renderBox = box;
+    const hole = box && !box.hidden && !this.renderMedia ? holePolygon(box.rect, this.spec!.w, this.spec!.h) : 'none';
+    const clip = hole === 'none' ? '' : hole;
+    if (this.overlay.style.clipPath !== clip) this.overlay.style.clipPath = clip;
+    const m = this.renderMedia;
+    if (m) {
+      const style = box ? boxStyle(box) : 'display:none';
+      if (style !== this.mediaStyle) { this.mediaStyle = style; m.setAttribute('style', style); }
+    }
+  }
+
+  /** Whether some scene of this player's canvas carries a media slot (the render then places or cuts out the video). */
+  get usesMediaSlots() { return this.hasSlots; }
+
+  /**
+   * Render mode, composite: `el` (a `<video>` the renderer drives) joins the stage between the under and over layers and follows the
+   * media box on every `renderFrame`, like the live element. Requires a canvas with media slots.
+   */
+  attachRenderMedia(el: HTMLVideoElement) {
+    if (!this.hasAttribute('render') || !this.hasSlots) throw new Error('attachRenderMedia needs a render player whose canvas has media slots');
+    el.setAttribute('data-explainer-media', '');
+    el.setAttribute('style', 'display:none');
+    this.mediaStyle = '';
+    this.layer.insertBefore(el, this.overlayOver);
+    this.renderMedia = el;
   }
 
   private get state(): PlayState {
@@ -515,7 +558,7 @@ export class ExplainerPlayer extends HTMLElement {
    * `{segmentId, t}`, applies `vars` (changed values only is fine), and paints once. Choice cues are hidden as in playthrough.
    * `scripts/render.mjs` drives this once per planned frame (`src/render-plan.ts`).
    */
-  renderFrame(segmentId: string, t: number, vars: Record<string, string> = {}) {
+  renderFrame(segmentId: string, t: number, vars: Record<string, string> = {}): { media: MediaBox | null; canvas: { w: number; h: number } | null } {
     if (!this.hasAttribute('render')) throw new Error('renderFrame needs the render attribute on <explainer-player>');
     for (const [k, v] of Object.entries(vars)) this.store.set(k, v);
     const c = this.clock;
@@ -523,7 +566,10 @@ export class ExplainerPlayer extends HTMLElement {
     c.holding = null;
     c.playing = false;
     c.t = t;
+    this.renderBox = null;
     this.paint();
+    // with media slots: where the video is in this frame (canvas px; null if the segment has none), for the renderer to place or cut out
+    return { media: this.hasSlots ? this.renderBox : null, canvas: this.spec ? { w: this.spec.w, h: this.spec.h } : null };
   }
 
   /** The still time (seconds) of segment `id`, default the current one: `segment.still` or the latest cue still (src/still.ts). */
