@@ -207,5 +207,8 @@ player.manifest = m; // <explainer-player> element
 `crossorigin` on `<explainer-player>` (e.g. `crossorigin="anonymous"`) is copied to the media element when it is created (not observed; set it before the manifest) and `<track>` inherits it. Needed when the VTT is cross-origin (it then needs CORS headers); a same-origin VTT with cross-origin audio works without it.
 Theme: CSS variables on the player or an ancestor; see the Theme section for every token.
 
+## Releases
+Releases are tags; see `CHANGELOG.md`. After a PR is merged to `main` and the changelog's "Unreleased" entries are moved under a version heading, the owner tags `vX.Y.Z` on `main`. A site pins the tag: `"explainer": "github:the-greenman/explainer#vX.Y.Z"`. `dist/` is not committed: the package has a `prepare` script (`vite build`), which npm runs after installing a dependency's devDependencies when it is fetched from a repository, so `node_modules/explainer/dist/index.js` exists after `npm i`. A branch or commit works the same way: `github:the-greenman/explainer#<branch-or-sha>`.
+
 ## scrub-root
 `<explainer-player play="scrub" scrub-root="#article">`: progress is the scroll position through that element (0 when its top reaches the viewport top, 1 when its bottom reaches the viewport bottom), so a sticky player inside a tall article is scrubbed by scrolling the article. Without it, the player's own position through the viewport is used.
