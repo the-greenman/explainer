@@ -22,3 +22,4 @@ customElements.define('explainer-motion', ExplainerMotion);
 const boot = () => { bindInputs(); initTriggers(); };
 if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot);
 else boot();
+export * from './design-canvas.ts';

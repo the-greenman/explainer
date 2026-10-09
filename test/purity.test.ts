@@ -7,6 +7,7 @@ const fixtures: Record<string, { data: any; items: any[] }> = {
   'com.semanticops.explainer/intro@1': { data: { title: 'T {name}', subtitle: 'S', presenter: 'P' }, items: [] },
   'com.semanticops.explainer/numbered-list@1': { data: { heading: 'H' }, items: ['one', 'two {name}', { text: 'three' }] },
   'com.semanticops.explainer/choice@1': { data: { prompt: 'Pick' }, items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] },
+  'com.semanticops.explainer/scene@1': { data: { template: 'specimen' }, items: [] },
 };
 const vars = { name: 'Ada' };
 
