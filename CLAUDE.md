@@ -36,7 +36,7 @@ This file gives project context for agents working in this repo. Read it before 
 - **SRS package `com.semanticops.explainer`** goes in `srs/` in this repo. The namespace is semanticops, not mudemocracy: that was an owner correction.
 - **Media is hosted on Cloudflare R2** as progressive MP4/M4A, not HLS. Records hold URLs, never binaries.
 - **Dogfood here first.**
-  - Do not touch muDemocracy.org or muSrs until a separate move-over issue.
+  - Do not touch muDemocracy.org or muSrs until a separate move-over issue (muDemocracy.org#322). Opening and commenting on the pilot's tracking issues there is allowed.
   - Examples live in `examples/`.
 
 ## Decisions after approval
@@ -77,9 +77,12 @@ This file gives project context for agents working in this repo. Read it before 
 - **Real media:** video is verified with real clips in `examples/video/`: forward, rate, reverse, scrub, segment switch, and hold with `loop_from`. Audio-only segments are verified with a real file in `examples/tarot/` (same measurements, plus the caption strip and the offline render). Safari, Firefox, phones and R2 delivery are also untested.
 
 ## Next steps
-1. **SRS package (plan step 3).**
+1. **muDemocracy pilot: guide 1.1, Decision Recording.** The design is in `docs/mudemocracy-pilot.md`. Tracking is in **the-greenman/muDemocracy.org#309** and its sub-issues, so PRs here reference those (`Refs the-greenman/muDemocracy.org#N`).
+   - First come the theme contract (#310), the muDemocracy theme mapped from muDemocracy.org `tokens.css` (#311, which is the brand authority), the component contract (#313) and the styleguide (#314).
+   - The script and storyboard (#315) run alongside, and they decide which components get built (#317).
+2. **SRS package (plan step 3, #318)**, after the pilot's components settle.
    - `srs/` holds the `com.semanticops.explainer` types: segment, marker, component types, choice/choice-option, variable, and the `goes-to` relation type.
    - Add specimen records and a generic `scripts/export.mjs` (srs CLI → manifest), then replace the placeholder `renders` refs.
    - Write only through the srs CLI or MCP and validate after each batch. No CLI or MCP command writes `packageDependencies` yet (srs-rust#1168).
-2. **muDemocracy pilot** in `examples/mudemocracy/`, then the move-over issue.
-3. **Open gaps** are in `docs/findings.md`. Add them when the pilot needs them.
+3. **Move-over:** publishing on the guide page (#322) is the first change to muDemocracy.org.
+4. **Open gaps** are in `docs/findings.md`. Add them when the pilot needs them.
