@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight guide</title>
+<link rel="stylesheet" href="flight.css">
+<style>
+  body { margin: 0; font: 17px/1.6 system-ui, sans-serif; color: #23221f; background: #fffdf8; }
+  main { max-width: 62rem; margin: 0 auto; padding: 0 1rem 4rem; }
+  header.site { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 1rem; padding: .5rem 1rem; background: #faf8f3; border-bottom: 1px solid #c9c4b8; }
+  header.site b { font-size: 1.1rem; }
+  .dot { width: 48px; height: 48px; flex: none; display: block; }
+  .gap { min-height: 100vh; padding: 3rem 0; }
+  .gap p { max-width: 40rem; margin: 0 0 1.25rem; }
+  .part { margin: 0; }
+  .part h2 { margin: 0 0 .5rem; }
+  explainer-player { border: 1px solid #c9c4b8; }
+  .end { display: flex; align-items: center; gap: 1rem; min-height: 5rem; padding: .75rem 1rem; border: 1px solid #c9c4b8; border-radius: 8px; background: #faf8f3; }
+  .end .dot { width: 64px; height: 64px; }
+  .scene .anchor { border: 3px dashed #b9b3a4; border-radius: 50%; box-sizing: border-box; }
+  .scene .anchor.tr { right: 40px; top: 40px; }
+  /* ?mode=scrub: each part is tall and its player sticks, so scrolling the part scrubs the player (scrub-root) */
+  .scrub .part { height: 230vh; }
+  .scrub .part explainer-player { position: sticky; top: 80px; }
+</style>
+</head>
+<body>
+<header class="site"><svg id="logo-h" class="dot" data-flight-home viewBox="0 0 64 64" role="img" aria-label="Logo"><circle cx="32" cy="32" r="30" fill="#2f7d62"/></svg><b>A short guide to deciding</b></header>
+<main>
+<h1>Propose, discuss, decide</h1>
+<p>This page is a long read with three short animations in it. Each animation is a small <code>&lt;explainer-player&gt;</code> with its own clock. The circle in the header above is one object, and as you read it is carried into the first animation, down to the second, and then to the third, ending in a box at the bottom of the article.</p>
+<p>The circle is drawn in a layer on top of the page, so it is not clipped by the animations it passes through. What it does is decided by a short list of stops. Some stops run on an animation's clock, and some on how far you have scrolled between two parts. Scroll back up and the circle goes back the way it came.</p>
+<div class="gap">
+<p>Most decisions that go wrong did not fail at the end. They failed at the start, when nobody wrote down what was being decided, who would be affected, or what would count as good enough. A short, shared description of the question is the cheapest thing a group can do, and it is almost always skipped.</p>
+<p>Writing the proposal forces a choice of words. Words that felt obvious in conversation turn out to mean different things to different people, and the first draft is where that shows. Treat the first draft as a probe, not as a position to defend.</p>
+<p>Once a proposal exists, other people can point at it. That is a large change in the kind of conversation a group can have: instead of describing what they imagine, they can say which sentence they would change, and why.</p>
+<p>A good proposal is small enough to be read in a few minutes. It says what will change, for whom, from when, and how anyone will know whether it worked. It leaves out the history of how the idea arose, which belongs in a separate note.</p>
+<p>Do not hide the cost. If the proposal needs time, money or attention from someone, say so in the plain text and name the person. People are generally willing to give things when asked; they are less willing to discover afterwards that they were counted on.</p>
+<p>When the draft is ready, put it where everyone who is affected can find it, and say how long they have to respond. A deadline is not a threat. It is what lets a quiet person know that silence will be read as agreement, and so makes it worth speaking.</p>
+<p>Keep scrolling. The logo at the top of the page is going to travel down this article with you. It lands in each part as that part begins, and it will be waiting at the end.</p>
+</div>
+
+<section class="part" id="part1">
+<h2>1. Propose</h2>
+<explainer-player id="p1" canvas="1280x720" play="enter">
+  <template data-scene="s1"><section class="scene">
+    <h1 data-at="0.3" data-for="0.8" data-fx="write">Propose</h1>
+    <p data-at="1.2" data-for="0.6" data-fx="fade">Write the question down.</p>
+    <div class="anchor br" id="a1"></div>
+  </section></template>
+  <script type="application/json" data-manifest>
+  { "id": "guide-1", "segments": [{ "id": "s1", "kind": "none", "out": 10 }],
+    "cues": [ { "id": "c1", "segment": "s1", "start": 0, "end": 10, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "s1" } } ] }
+  </script>
+</explainer-player>
+</section>
+
+<div class="gap" id="gap1">
+<p>Discussion is where a proposal gets better or gets abandoned, and both are good outcomes. The aim is not agreement for its own sake but a version that the people affected can live with and the people responsible can carry out.</p>
+<p>Separate questions of fact from questions of preference. Facts can be checked, and checking them is a service to everyone. Preferences cannot be checked, only weighed, and the weighing should be done in the open where it can be seen to be fair.</p>
+<p>Ask the people who disagree to say what would change their mind. If the answer is nothing, the disagreement is probably about something other than the proposal, and it is worth finding out what.</p>
+<p>Write down the objections that were raised, even the ones that were answered. A record of what was considered protects the group from having the same argument again in six months, and protects the decision from the suspicion that nobody noticed the problem.</p>
+<p>Keep the conversation in one place. A discussion spread across messages, meetings and corridors cannot be summarised, and a decision that cannot be summarised cannot be explained to the person who joins next year.</p>
+<p>At some point the discussion has to end. Say when, in advance, and say who will call it. The calling is a small act of leadership that most groups would rather avoid, and avoiding it is how a month of good discussion turns into a year of drift.</p>
+<p>Part three is next. Scroll on; the logo is already on its way, and it may arrive before you do.</p>
+</div>
+
+<section class="part" id="part2">
+<h2>2. Discuss</h2>
+<explainer-player id="p2" canvas="1280x720" play="enter">
+  <template data-scene="s2"><section class="scene b">
+    <h1 data-at="0.3" data-for="0.8" data-fx="write">Discuss</h1>
+    <p data-at="1.2" data-for="0.6" data-fx="fade">Make the disagreement visible.</p>
+    <p data-at="3.2" data-for="0.6" data-fx="fade">Fact, then preference.</p>
+    <p data-at="5" data-for="0.6" data-fx="fade">Write the objections down.</p>
+    <div class="anchor bl" id="a2"></div>
+    <div class="anchor tr" id="a2b"></div>
+  </section></template>
+  <script type="application/json" data-manifest>
+  { "id": "guide-2", "segments": [{ "id": "s2", "kind": "none", "out": 10 }],
+    "cues": [ { "id": "c2", "segment": "s2", "start": 0, "end": 10, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "s2" } } ] }
+  </script>
+</explainer-player>
+</section>
+
+<div class="gap" id="gap2">
+<p>A decision is a sentence in the past tense: we chose this, on this date, for these reasons. If it cannot be written that way, it has not been made yet, whatever the mood in the room.</p>
+<p>Record what was decided, who decided it, what was considered and set aside, and when it will be looked at again. That last item is the most often forgotten and the most useful. Most decisions are provisional, and saying so makes them easier to make.</p>
+<p>Tell the people who were not in the room. The test of a decision is not whether it was reached but whether it can be explained to someone who did not take part, in a minute, without apology.</p>
+<p>Then do it. The distance between a decision and its first visible consequence is where trust is won or lost, and it is measured in days, not months.</p>
+<p>Come back to it on the date you named. Ask what happened and what you would do differently. This is not a review of the people; it is a review of the decision, and it is how the next proposal gets better.</p>
+<p>That is the cycle. Propose, discuss, decide, and then, because the decision will raise new questions, propose again.</p>
+<p>The article ends below. The logo will be there.</p>
+</div>
+
+<section class="part" id="part3">
+<h2>3. Decide</h2>
+<explainer-player id="p3" canvas="1280x720" play="enter">
+  <template data-scene="s3"><section class="scene">
+    <h1 data-at="0.3" data-for="0.8" data-fx="write">Decide</h1>
+    <p data-at="1.2" data-for="0.6" data-fx="fade">Say what was decided.</p>
+    <div class="anchor br" id="a3"></div>
+  </section></template>
+  <script type="application/json" data-manifest>
+  { "id": "guide-3", "segments": [{ "id": "s3", "kind": "none", "out": 10 }],
+    "cues": [ { "id": "c3", "segment": "s3", "start": 0, "end": 10, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "s3" } } ] }
+  </script>
+</explainer-player>
+</section>
+
+<div class="gap" id="gap3">
+<p>That is the whole cycle, and the animations are only a way to see it once. Everything else is in the writing.</p>
+<p>Scroll down: the circle is carried to the end of the article, and scroll back up to carry it back.</p>
+</div>
+<div class="end"><svg id="end-home" class="dot" data-flight-home viewBox="0 0 64 64" role="img" aria-label="Logo"><circle cx="32" cy="32" r="30" fill="#2f7d62"/></svg><span>The end. The circle lands here.</span></div>
+<!-- room to scroll the end block up to the viewport middle: without it the last scroll stretch never reaches 1 at the bottom of the page -->
+<div style="height:55vh"></div>
+<p><a href="index.html">Back to the two-player flights</a> | <a href="guide.html?mode=scrub">scrub mode</a> | <a href="guide.html">enter mode</a></p>
+</main>
+
+<!-- the object is the header circle. Stops, in order: 1 header (rest), 2 falls into part 1 on part 1's clock, 3 is carried down the gap to part 2 by scroll,
+     4 glides inside part 2 on part 2's clock, 5 falls out of part 2 into part 3 on part 2's clock (even if part 3 is below the fold), 6 is carried to the end by scroll -->
+<explainer-flight><script type="application/json">
+{ "object": "#logo-h",
+  "anchors": [ { "selector": "#logo-h" }, { "selector": "#a1" }, { "selector": "#a2" }, { "selector": "#a2b" }, { "selector": "#a3" }, { "selector": "#end-home" } ],
+  "stops": [
+    { "player": "#p1", "segment": "s1", "at": 0, "anchor": 0, "fx": "cut" },
+    { "player": "#p1", "segment": "s1", "at": 0.5, "for": 1.2, "anchor": 1, "fx": "fall" },
+    { "scroll": { "from": "#part1", "to": "#part2" }, "anchor": 2, "fx": "glide" },
+    { "player": "#p2", "segment": "s2", "at": 2.5, "for": 1.5, "anchor": 3, "fx": "glide" },
+    { "player": "#p2", "segment": "s2", "at": 8.5, "for": 1.2, "anchor": 4, "fx": "fall" },
+    { "scroll": { "from": "#part3", "to": "#end-home" }, "anchor": 5, "fx": "glide" } ] }
+</script></explainer-flight>
+
+<script>
+  // ?mode=scrub: every part scrubs with the scroll (before the players start); default is play="enter" from the markup
+  if (new URLSearchParams(location.search).get('mode') === 'scrub') {
+    document.documentElement.classList.add('scrub');
+    for (const n of [1, 2, 3]) { const p = document.getElementById('p' + n); p.setAttribute('play', 'scrub'); p.setAttribute('scrub-root', '#part' + n); }
+  }
+</script>
+<script type="module">
+  import '../../src/index.ts';
+  import '../../src/experimental/flight/index.ts';
+</script>
+</body>
+</html>

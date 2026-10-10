@@ -1,0 +1,17 @@
+/* Karaoke marker example: neutral. The ball is the site's markup; the engine only moves it and sets data-marker-here / --marker-p. */
+.kscene { background: #f6f3ec; }
+.kscene h1 { font-size: 64px; margin: 0 0 24px 56px; }
+.kscene ul { list-style: none; margin: 0; padding: 0; }
+.kscene .concept { margin: 10px 0 10px 56px; padding: 8px 20px 8px 36px; width: 640px; box-sizing: border-box; font-size: 44px; color: #8a8576; border-radius: 12px;
+  /* the arrival: the fill grows with --marker-p (1 at rest); no property when the ball is elsewhere */
+  background: rgba(200, 85, 61, calc(0.16 * var(--marker-p, 0))); }
+.kscene .concept[data-marker-here] { color: #23221f; outline: 3px solid #c8553d; }
+/* the ball: a span (an HTML element: the marker measures offsetWidth) around a presentation-attribute SVG, so the flier (a clone in the page layer) looks the same */
+.ball { display: block; width: 36px; height: 36px; }
+.ball svg { display: block; width: 100%; height: 100%; }
+/* page side */
+.landing { display: flex; align-items: center; gap: 1rem; margin: 1rem 0; padding: .9rem 1.1rem; border: 2px solid #c9c4b8; border-radius: 10px; background: #faf8f3; transition: none; }
+.landing:has([data-flight-here]) { border-color: #c8553d; background: #fbeee9; }
+.landing .slot { width: 36px; height: 36px; flex: none; border: 2px dashed #b9b3a4; border-radius: 50%; box-sizing: border-box; }
+.landing .slot[data-flight-here] { border-color: #c8553d; }
+.landing .page-ball { width: 36px; height: 36px; flex: none; }

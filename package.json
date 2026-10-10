@@ -6,7 +6,9 @@
   "main": "dist/index.js",
   "exports": {
     ".": "./dist/index.js",
-    "./styleguide": "./dist/styleguide.js"
+    "./styleguide": "./dist/styleguide.js",
+    "./experimental/flight": "./dist/experimental/flight.js",
+    "./experimental/flight/pure": "./dist/experimental/flight/pure.js"
   },
   "files": [
     "dist",
@@ -17,7 +19,8 @@
     "build": "vite build",
     "prepare": "vite build",
     "test": "node --test test/ examples/",
-    "render": "node scripts/render.mjs"
+    "render": "node scripts/render.mjs",
+    "check:flight": "node examples/flight/check.mjs && node examples/flight/check-guide.mjs && node examples/flight/check-karaoke.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

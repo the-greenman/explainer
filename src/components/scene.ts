@@ -1,4 +1,5 @@
 import { clamp01, ramp } from '../clock.ts';
+import { num } from '../num.ts';
 import { parseSlot, type SlotDef } from '../media-slots.ts';
 import { FADE_OFFSET } from '../motion.ts';
 import type { Component } from './base.ts';
@@ -20,7 +21,6 @@ export const SCENE_TRANSITIONS = ['cut', 'fade', 'wipe', 'wipe-left'];
 export type Choreo = { el: HTMLElement; at: number; len: number; fx: string };
 type Transition = 'cut' | 'fade' | 'wipe' | 'wipe-left';
 
-const num = (s: string | null | undefined, d: number) => { const n = s == null || s.trim() === '' ? NaN : Number(s); return Number.isFinite(n) ? n : d; };
 const quote = (s: string) => `"${s.replace(/["\\]/g, '\\$&')}"`;
 
 /** The elements of `root` that carry choreography, with their parsed timing. Derived from the markup only. */
@@ -137,7 +137,35 @@ function sceneEnd(id: unknown): number | null {
   return end;
 }
 
+/**
+ * An extension point for packs: a scene may carry behaviour the core does not know (a marker that hops between elements, say).
+ * `mount(root)` is called once per scene mount, after the template is cloned in, and returns the extension's per-mount state
+ * (the elements it found) or `undefined` to opt out of that scene. `render(root, state, t, dur)` is called at the END of every
+ * scene render, after the built-in choreography (so measured positions include `rise` transforms), with `t` = `p * dur` seconds
+ * from the cue start. Like a component, `render` must be a pure function of (t, layout): no state between calls except `state`.
+ * An extension registered after a scene mounted is mounted into it at that scene's next render, so the order of imports does not matter.
+ * A stable mechanism, not experimental; see README "Scenes".
+ */
+export type SceneExtension<S = unknown> = {
+  name: string;
+  mount(root: HTMLElement): S | undefined;
+  render(root: HTMLElement, state: S, t: number, dur: number): void;
+};
+const extensions = new Map<string, SceneExtension<any>>();
+export function registerSceneExtension<S>(ext: SceneExtension<S>) {
+  if (extensions.has(ext.name)) throw new Error(`duplicate scene extension ${ext.name}`);
+  extensions.set(ext.name, ext);
+}
+export const sceneExtensions = (): SceneExtension<any>[] => [...extensions.values()];
+
+function mountExtensions(node: HTMLElement) {
+  const st = extState.get(node);
+  if (!st) return; // a node this scene never mounted (hand-built, foreign): no extensions, and none are mounted into it
+  for (const e of extensions.values()) if (!st.has(e.name)) st.set(e.name, e.mount(node));
+}
+
 const mounted = new WeakMap<Element, Choreo[]>();
+const extState = new WeakMap<Element, Map<string, unknown>>(); // scene root -> extension name -> its state (undefined: opted out); absent: not mounted yet
 const words = new WeakMap<Element, HTMLElement[]>(); // element with data-fx="words" -> its word spans, made at mount
 const warned = new Set<string>();
 
@@ -158,6 +186,8 @@ export const scene: Component = {
     const ch = choreoOf(node);
     for (const c of ch) if (c.fx === 'words') words.set(c.el, wrapWords(c.el));
     mounted.set(node, ch);
+    extState.set(node, new Map());
+    mountExtensions(node);
     return node;
   },
   render(node, p, data, _vars, _items, dur) {
@@ -173,5 +203,8 @@ export const scene: Component = {
       else st.setProperty('clip-path', tin === 'wipe' ? `inset(${pct(inF)} 0 0 0)` : `inset(0 0 0 ${pct(inF)})`);
     }
     for (const c of mounted.get(node) ?? []) applyFx(c, fxProgress(c.at, c.len, t));
+    mountExtensions(node as HTMLElement); // an extension registered since the mount
+    const es = extState.get(node); // absent for a node this scene never mounted: rendered without extensions
+    if (es) for (const e of extensions.values()) { const st = es.get(e.name); if (st !== undefined) e.render(node as HTMLElement, st, t, dur); }
   },
 };

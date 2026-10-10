@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+- Scene extension point: `registerSceneExtension({ name, mount(root), render(root, state, t, dur) })`. `mount` runs once per scene mount (return `undefined` to opt out), `render` at the end of every scene render, after the built-in choreography. Pure by contract; a late registration is mounted at the scene's next render. README "Scenes", `test/scene-extension.test.ts`.
+
+### Experimental
+These are not covered by the compatibility promises (see `src/experimental/README.md`).
+- `explainer/experimental/flight`: `<explainer-flight>`, one object flying between anchors inside and outside players, driven by player clocks and scroll stretches on a chain of stops. Effects are modules: `registerFlightEffects` / `getFlightEffect`, built-ins `cut`, `glide`, `fall`, `pop`, and a contract test that runs over every registered effect. Paints are batched per animation frame (`flush()`), repaint on layout shifts, fallbacks kept in document coordinates, reduced motion no longer counts players pinned at their still time as reached. Not exported from the main entry. Demos in `examples/flight/`, `npm run check:flight`.
+- flight: effect `hop` (an arc with a landing squash); arrival marking (`data-flight-here` on the element the object rests at, `--flight-p` on the one it moves toward); the in-video marker, a scene extension that renders offline (`data-marker`, `data-marker-stop`, `data-marker-at|for|fx|point`, `data-marker-here`, `--marker-p`); `phraseTimes(vtt, phrases)` for build-time timing from captions; the side-effect-free subpath `explainer/experimental/flight/pure`; the handoff recipe (marker <-> flight). Example `examples/flight/karaoke.html`, `check-karaoke.mjs`.
+
 ## [0.3.0] - 2026-10-09
 
 ### Added
