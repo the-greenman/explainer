@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight example</title>
+<link rel="stylesheet" href="flight.css">
+<style>
+  body { margin: 1rem auto; padding: 0 1rem; max-width: 62rem; font: 16px system-ui, sans-serif; }
+  .bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .75rem 0; }
+  input[type=range] { flex: 1; min-width: 10rem; }
+  button { font: inherit; }
+  code { font-size: .9em; }
+  .block { display: flex; align-items: center; gap: 1rem; min-height: 5rem; padding: .75rem 1rem; border: 1px solid #c9c4b8; border-radius: 8px; background: #faf8f3; }
+  .block.header { margin-bottom: .75rem; }
+  .block.footer { margin-top: .75rem; justify-content: space-between; }
+  .logo { width: 64px; height: 64px; flex: none; display: block; }
+  explainer-player { border: 1px solid #c9c4b8; }
+  section.demo { margin: 3rem 0; }
+</style>
+</head>
+<body>
+<h1>Flights: breaking the wall</h1>
+<p>A logo moves between boxes on the page and boxes inside the player, on the player's one reversible timeline. The player's stage clips
+  everything inside it, so the flying logo is drawn in a layer on the page, above the player. Press play, then drag the scrubber back:
+  the logo rises out of the page section below, back into the video. See <code>README.md</code>. Without JavaScript every logo shows where it sits in the markup.</p>
+
+<section class="demo">
+<h2>Out the bottom</h2>
+<p>The logo pops into the bottom-right corner of the video at 6 s (a canvas-coordinate anchor), then falls out of the bottom of the video at 8 s onto the footer.</p>
+<explainer-player id="p1" canvas="1280x720">
+  <template data-scene="one"><section class="scene">
+    <h1 data-at="0.3" data-for="1" data-fx="write">A mark with a journey</h1>
+    <p data-at="1.5" data-for="0.6" data-fx="fade">It starts nowhere, appears here, and leaves the frame.</p>
+  </section></template>
+  <template data-scene="two"><section class="scene b">
+    <h1 data-at="0.2" data-for="0.8" data-fx="write">Leaving the frame</h1>
+    <p data-at="0.8" data-for="0.6" data-fx="fade">The stage clips scenes; the flier does not.</p>
+  </section></template>
+  <script type="application/json" data-manifest>
+  { "id": "flight-1", "segments": [{ "id": "s1", "kind": "none", "out": 10 }],
+    "cues": [
+      { "id": "one", "segment": "s1", "start": 0, "end": 5.2, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "one" } },
+      { "id": "two", "segment": "s1", "start": 4.6, "end": 10, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "two", "transition": { "in": "fade", "dur": 0.6 } } }
+    ] }
+  </script>
+</explainer-player>
+<div class="bar">
+  <button data-explainer-action="play" data-explainer-target="#p1">Play</button>
+  <button data-explainer-action="pause" data-explainer-target="#p1">Pause</button>
+  <button data-explainer-action="rate" data-explainer-value="-1" data-explainer-target="#p1">Reverse</button>
+  <input type="range" min="0" max="10" step="0.01" value="0" data-explainer-action="seek" data-explainer-target="#p1" aria-label="Scrub">
+</div>
+<div class="block footer"><span>Footer: the logo lands here.</span>
+  <svg id="logo1" class="logo" data-flight-home viewBox="0 0 64 64" role="img" aria-label="Logo"><rect width="64" height="64" rx="14" fill="#c8553d"/><text x="32" y="45" text-anchor="middle" font-size="40" font-family="Georgia,serif" font-weight="700" fill="#fff">E</text></svg>
+</div>
+<explainer-flight for="#p1"><script type="application/json">
+{ "object": "#logo1",
+  "anchors": [ { "canvas": [1136, 576, 96, 96] }, { "selector": "#logo1" } ],
+  "stops": [ { "segment": "s1", "at": 6, "for": 0.5, "anchor": 0, "fx": "pop" }, { "segment": "s1", "at": 8, "for": 1.4, "anchor": 1, "fx": "fall" } ] }
+</script></explainer-flight>
+</section>
+
+<section class="demo">
+<h2>Through the video</h2>
+<p>The logo starts in the header block, falls into the bottom-left corner of the video at 0.5 s (an anchor that is an element inside the scene), stays there across a scene change, and falls out of the bottom at 9 s.</p>
+<div class="block header"><svg id="logo2" class="logo" data-flight-home viewBox="0 0 64 64" role="img" aria-label="Logo"><rect width="64" height="64" rx="14" fill="#3d6ec8"/><text x="32" y="45" text-anchor="middle" font-size="40" font-family="Georgia,serif" font-weight="700" fill="#fff">E</text></svg>
+  <span>Header: the logo starts here.</span></div>
+<explainer-player id="p2" canvas="1280x720">
+  <template data-scene="a"><section class="scene">
+    <div class="anchor bl" id="bl-a"></div>
+    <h1 data-at="0.3" data-for="1" data-fx="write">In the frame</h1>
+    <p data-at="1.5" data-for="0.6" data-fx="fade">The anchor is a box in this scene.</p>
+  </section></template>
+  <template data-scene="b"><section class="scene b">
+    <div class="anchor bl" id="bl-b"></div>
+    <h1 data-at="0.2" data-for="0.8" data-fx="write">A scene change</h1>
+    <p data-at="0.8" data-for="0.6" data-fx="fade">The anchor of the first scene is gone; this scene has its own.</p>
+  </section></template>
+  <script type="application/json" data-manifest>
+  { "id": "flight-2", "segments": [{ "id": "s2", "kind": "none", "out": 10 }],
+    "cues": [
+      { "id": "a", "segment": "s2", "start": 0, "end": 5.2, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "a" } },
+      { "id": "b", "segment": "s2", "start": 4.6, "end": 10, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "b", "transition": { "in": "fade", "dur": 0.6 } } }
+    ] }
+  </script>
+</explainer-player>
+<div class="bar">
+  <button data-explainer-action="play" data-explainer-target="#p2">Play</button>
+  <button data-explainer-action="pause" data-explainer-target="#p2">Pause</button>
+  <button data-explainer-action="rate" data-explainer-value="-1" data-explainer-target="#p2">Reverse</button>
+  <input type="range" min="0" max="10" step="0.01" value="0" data-explainer-action="seek" data-explainer-target="#p2" aria-label="Scrub">
+</div>
+<div class="block footer"><span>Section below: the logo lands here.</span>
+  <svg id="land2" class="logo" data-flight-home viewBox="0 0 64 64" role="img" aria-label="Logo"><rect width="64" height="64" rx="14" fill="#3d6ec8"/><text x="32" y="45" text-anchor="middle" font-size="40" font-family="Georgia,serif" font-weight="700" fill="#fff">E</text></svg>
+</div>
+<!-- a comma list: the first match with a box wins, so the anchor follows the scene that is shown -->
+<explainer-flight for="#p2"><script type="application/json">
+{ "object": "#logo2",
+  "anchors": [ { "selector": "#logo2" }, { "selector": "#bl-a, #bl-b" }, { "selector": "#land2" } ],
+  "stops": [ { "segment": "s2", "at": 0, "anchor": 0, "fx": "cut" }, { "segment": "s2", "at": 0.5, "for": 1.2, "anchor": 1, "fx": "fall" }, { "segment": "s2", "at": 9, "for": 1, "anchor": 2, "fx": "fall" } ] }
+</script></explainer-flight>
+</section>
+
+<div style="height:60vh"></div>
+
+<script>
+  // ?render: the players get the render attribute before they start, to check that flights then do nothing
+  if (location.search.includes('render')) document.querySelectorAll('explainer-player').forEach((p) => p.setAttribute('render', ''));
+</script>
+<script type="module">
+  import '../../src/index.ts';
+  import './flight-element.ts';
+</script>
+</body>
+</html>
