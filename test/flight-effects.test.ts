@@ -5,6 +5,7 @@ import { listFlightEffects, registerFlightEffects, getFlightEffect, flightEffect
 import { registerBuiltInEffects } from '../src/experimental/flight/effects/index.ts';
 import type { FlightEffect, Rect } from '../src/experimental/flight/types.ts';
 import { effectProblems } from '../src/experimental/flight/contract.ts';
+import { HOP_LIFT_MAX, HOP_LIFT_MIN, hopLift } from '../src/experimental/flight/effects/hop.ts';
 
 registerBuiltInEffects();
 
@@ -12,7 +13,7 @@ const from: Rect = { x: 10, y: 20, w: 64, h: 64 };
 const to: Rect = { x: 400, y: 600, w: 48, h: 48 };
 
 test('the built-ins are registered', () => {
-  for (const n of ['cut', 'glide', 'fall', 'pop']) assert.ok(flightEffects(n), n);
+  for (const n of ['cut', 'glide', 'fall', 'pop', 'hop']) assert.ok(flightEffects(n), n);
 });
 
 for (const fx of listFlightEffects()) {
@@ -45,6 +46,25 @@ test('pop: scale overshoots 1, opacity reaches 1', () => {
   const pop = getFlightEffect('pop');
   assert.ok(Math.max(...[0.2, 0.4, 0.6, 0.8].map((p) => pop.at(from, to, p).scale)) > 1);
   assert.equal(pop.at(from, to, 0.5).opacity, 1);
+});
+
+test('hop: the apex is above both endpoints (any direction), x stays between them, and it lands at scale 1', () => {
+  const hop = getFlightEffect('hop');
+  const R = (x: number, y: number): Rect => ({ x, y, w: 20, h: 20 });
+  const pairs: [Rect, Rect][] = [[R(0, 100), R(300, 100)], [R(0, 0), R(60, 600)], [R(0, 600), R(60, 0)], [R(200, 300), R(200, 300)], [R(0, 0), R(900, 40)]];
+  for (const [a, b] of pairs) {
+    const ys = Array.from({ length: 101 }, (_, i) => hop.at(a, b, i / 100).rect.y);
+    assert.ok(Math.min(...ys) < Math.min(a.y, b.y) - 1, `apex above ${a.x},${a.y} -> ${b.x},${b.y}`);
+    const xs = Array.from({ length: 101 }, (_, i) => hop.at(a, b, i / 100).rect.x);
+    assert.ok(xs.every((x) => x >= Math.min(a.x, b.x) - 1e-9 && x <= Math.max(a.x, b.x) + 1e-9), 'x eased between');
+  }
+  const lifts = [hopLift(0, 0), hopLift(20, 0), hopLift(1000, 1000)];
+  assert.deepEqual(lifts, [HOP_LIFT_MIN, HOP_LIFT_MIN, HOP_LIFT_MAX], 'the lift is bounded');
+  assert.ok(hopLift(100, 100) > HOP_LIFT_MIN && hopLift(100, 100) < HOP_LIFT_MAX);
+  const sc = [0.86, 0.9, 0.93, 0.96].map((p) => hop.at(from, to, p).scale);
+  assert.ok(Math.min(...sc) < 1, 'squashes on landing');
+  assert.equal(hop.at(from, to, 0.5).scale, 1, 'not in flight');
+  assert.ok(Math.abs(hop.at(from, to, 0.9999).scale - 1) < 1e-3, 'ends at scale 1');
 });
 
 test('a site pack can add an effect and use it by name', () => {

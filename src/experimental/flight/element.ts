@@ -1,6 +1,7 @@
 // <explainer-flight for="#player">: draws one object flying between anchors outside and inside players. EXPERIMENTAL (see ../README.md).
 // The paint is a pure function of (every driver's progress, measured rects); nothing accumulates between paints. Events only mark the
 // element dirty; one paint runs per animation frame.
+import { arrivalOf } from './arrival.ts';
 import { chainBoxAt } from './chain.ts';
 import { gatePlayerProgress, playerProgress, scrollProgress, scrollStop, settleProgress } from './drivers.ts';
 import { getFlightEffect } from './effect.ts';
@@ -13,7 +14,7 @@ type StopCfg = { player?: string; segment?: string; at?: number; for?: number; s
 type Cfg = { object: string; anchors: AnchorCfg[]; stops: StopCfg[] };
 type Driver = { kind: 'player'; player: Element; segment: string; at: number; len: number } | { kind: 'scroll'; from: string; to: string };
 type Clk = { segmentId: string; t: number };
-type Measured = { rect: Rect; els: Element[] };
+type Measured = { rect: Rect; els: Element[]; el: Element | null }; // el: the matched element that gave the rect (null for a canvas anchor or a hidden one)
 
 const LAYER_STYLE = 'position:fixed;inset:0;pointer-events:none;z-index:2147483000;overflow:visible';
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -32,6 +33,8 @@ export class ExplainerFlight extends HTMLElement {
   private layer: HTMLElement | null = null;
   private flier: HTMLElement | null = null;
   private touched = new Map<Element, string>(); // element -> its inline visibility before we touched it
+  private hereEl: Element | null = null; // carries data-flight-here
+  private targetEl: Element | null = null; // carries --flight-p
   private lastGood: (Rect | null)[] = []; // document coordinates (a viewport rect goes stale on scroll)
   private observed = new Set<Element>();
   private ro: ResizeObserver | null = null;
@@ -103,6 +106,7 @@ export class ExplainerFlight extends HTMLElement {
     this.raf = 0; this.dirty = false;
     for (const [h, v] of this.touched) (h as HTMLElement | SVGElement).style.visibility = v;
     this.touched.clear();
+    this.mark(null, null, 0);
     this.layer?.remove();
     this.layer = this.flier = null;
     this.clocks.clear();
@@ -155,17 +159,17 @@ export class ExplainerFlight extends HTMLElement {
     const keep = (r: Rect): Rect => { this.lastGood[i] = toDocRect(r, sx, sy); return r; };
     if ('canvas' in a) {
       const c = canvas();
-      if (!c) return { rect: stale(), els: [] };
+      if (!c) return { rect: stale(), els: [], el: null };
       const s = c.b.width / c.dw, [x, y, w, h] = a.canvas;
-      return { rect: keep({ x: c.b.left + x * s, y: c.b.top + y * s, w: w * s, h: h * s }), els: [] };
+      return { rect: keep({ x: c.b.left + x * s, y: c.b.top + y * s, w: w * s, h: h * s }), els: [], el: null };
     }
     const els = all(a.selector);
     for (const el of els) {
       this.watch(el);
       const b = el.getBoundingClientRect();
-      if (hasBox(b)) return { rect: keep({ x: b.left, y: b.top, w: b.width, h: b.height }), els };
+      if (hasBox(b)) return { rect: keep({ x: b.left, y: b.top, w: b.width, h: b.height }), els, el };
     }
-    return { rect: stale(), els };
+    return { rect: stale(), els, el: null };
   }
 
   /** Progress of every stop from its own driver: a player's latest clock (gated, see `gatePlayerProgress`), or the scroll stretch measured now. */
@@ -186,6 +190,14 @@ export class ExplainerFlight extends HTMLElement {
       const f = fe?.getBoundingClientRect(), t = te?.getBoundingClientRect();
       return f && t ? scrollStop(scrollProgress(f.bottom, t.top, line)) : IDLE;
     });
+  }
+
+  /** Arrival marking: `data-flight-here` on the element the object rests at, `--flight-p` (0..1, 1 at rest) on the one it rests at or moves toward. Removed everywhere else. */
+  private mark(here: Element | null, target: Element | null, p: number) {
+    if (this.hereEl !== here) { this.hereEl?.removeAttribute('data-flight-here'); this.hereEl = here; }
+    here?.setAttribute('data-flight-here', '');
+    if (this.targetEl !== target) { (this.targetEl as HTMLElement | null)?.style.removeProperty('--flight-p'); this.targetEl = target; }
+    if (target) { const v = String(r3(p)); const st = (target as HTMLElement).style; if (st.getPropertyValue('--flight-p') !== v) st.setProperty('--flight-p', v); }
   }
 
   private paint() {
@@ -229,6 +241,8 @@ export class ExplainerFlight extends HTMLElement {
       this.vis(h, homeVisibility('home', own));
       for (const s of Array.from(h.querySelectorAll('[data-flight-stays]'))) this.vis(s, homeVisibility('stays', own));
     }
+    const arr = arrivalOf(this.chain, q, box);
+    this.mark(arr.here != null ? measured[arr.here].el : null, arr.target != null ? measured[arr.target].el : null, arr.p);
     const f = this.flier;
     const flierOn = box.visible && !here && box.rect.w > 0 && box.rect.h > 0 && !!f.firstChild;
     if (!flierOn) { if (f.style.display !== 'none') f.style.display = 'none'; f.removeAttribute('data-s'); }

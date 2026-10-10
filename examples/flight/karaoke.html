@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Karaoke marker</title>
+<link rel="stylesheet" href="flight.css">
+<link rel="stylesheet" href="karaoke.css">
+<style>
+  body { margin: 0; font: 17px/1.6 system-ui, sans-serif; color: #23221f; background: #fffdf8; }
+  main { max-width: 62rem; margin: 0 auto; padding: 0 1rem 4rem; }
+  explainer-player { border: 1px solid #c9c4b8; }
+  .bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .75rem 0; }
+  .bar input[type=range] { flex: 1; min-width: 10rem; }
+  button { font: inherit; }
+  code { font-size: .9em; }
+</style>
+</head>
+<body>
+<main>
+<h1>A karaoke marker</h1>
+<p>A ball hops through the animation, landing on each concept as the narration says it (the times come from <code>karaoke.vtt</code> with <code>phraseTimes</code>, here in the page script because this example has no build step; a site does it at build time). The concept lights up through <code>data-marker-here</code> and <code>--marker-p</code>. After the last phrase the ball falls out of the video onto the block below, which lights up through <code>data-flight-here</code>. Scrub back and it goes back. Rendered offline, the ball stays in the video and the flight does nothing.</p>
+
+<explainer-player id="k1" canvas="1280x720">
+  <template data-scene="k"><section class="scene kscene">
+    <h1 data-at="0.2" data-for="0.5" data-fx="fade">Four things matter</h1>
+    <ul>
+      <li class="concept" data-marker-stop="m1" data-phrase="the question">The question</li>
+      <li class="concept" data-marker-stop="m1" data-phrase="the reasons">The reasons</li>
+      <li class="concept" data-marker-stop="m1" data-phrase="the options">The options</li>
+      <li class="concept" data-marker-stop="m1" data-phrase="the date">The date</li>
+    </ul>
+    <span id="ball" class="ball" data-marker="m1"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" fill="#c8553d"/><circle cx="13" cy="12" r="4" fill="#fff" fill-opacity=".45"/></svg></span>
+  </section></template>
+  <script type="application/json" data-manifest>
+  { "id": "karaoke-1", "segments": [{ "id": "s", "kind": "none", "out": 12 }],
+    "cues": [ { "id": "c", "segment": "s", "start": 0, "end": 12, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "k" } } ] }
+  </script>
+</explainer-player>
+<div class="bar">
+  <button data-explainer-action="play" data-explainer-target="#k1">Play</button>
+  <button data-explainer-action="pause" data-explainer-target="#k1">Pause</button>
+  <button data-explainer-action="rate" data-explainer-value="-1" data-explainer-target="#k1">Reverse</button>
+  <input type="range" min="0" max="12" step="0.01" value="0" data-explainer-action="seek" data-explainer-target="#k1" aria-label="Scrub">
+</div>
+<div class="landing" id="landing"><span class="slot" id="slot"></span><span>Page block: the ball lands here when the narration says "carry on".</span></div>
+
+<!-- the handoff: the marker element is the flight's object. Stop 0 rests at the marker; the second stop falls to the slot. -->
+<explainer-flight for="#k1"><script type="application/json">
+{ "object": "#ball",
+  "anchors": [ { "selector": "#ball" }, { "selector": "#slot" } ],
+  "stops": [ { "segment": "s", "at": 0, "anchor": 0, "fx": "cut" }, { "segment": "s", "at": 9, "for": 1.2, "anchor": 1, "fx": "fall", "phrase": "carry on" } ] }
+</script></explainer-flight>
+
+<h2>The other way</h2>
+<p>The ball starts on the page, falls into the video as the narration begins, and from then on is the marker: it hops through the concepts. (Rendered offline, the ball is in the video from the start, resting on the first concept.)</p>
+<div class="landing" id="start"><svg id="pball" class="page-ball" data-flight-home viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" fill="#c8553d"/><circle cx="13" cy="12" r="4" fill="#fff" fill-opacity=".45"/></svg><span>Page block: the ball starts here.</span></div>
+<explainer-player id="k2" canvas="1280x720">
+  <template data-scene="k"><section class="scene kscene">
+    <h1 data-at="0.2" data-for="0.5" data-fx="fade">Four things matter</h1>
+    <ul>
+      <li class="concept" data-marker-stop="m2" data-phrase="the question">The question</li>
+      <li class="concept" data-marker-stop="m2" data-phrase="the reasons">The reasons</li>
+      <li class="concept" data-marker-stop="m2" data-phrase="the options">The options</li>
+      <li class="concept" data-marker-stop="m2" data-phrase="the date">The date</li>
+    </ul>
+    <span id="ball2" class="ball" data-marker="m2" data-flight-home><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" fill="#c8553d"/><circle cx="13" cy="12" r="4" fill="#fff" fill-opacity=".45"/></svg></span>
+  </section></template>
+  <script type="application/json" data-manifest>
+  { "id": "karaoke-2", "segments": [{ "id": "s", "kind": "none", "out": 12 }],
+    "cues": [ { "id": "c", "segment": "s", "start": 0, "end": 12, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "k" } } ] }
+  </script>
+</explainer-player>
+<div class="bar">
+  <button data-explainer-action="play" data-explainer-target="#k2">Play</button>
+  <button data-explainer-action="pause" data-explainer-target="#k2">Pause</button>
+  <button data-explainer-action="rate" data-explainer-value="-1" data-explainer-target="#k2">Reverse</button>
+  <input type="range" min="0" max="12" step="0.01" value="0" data-explainer-action="seek" data-explainer-target="#k2" aria-label="Scrub">
+</div>
+<explainer-flight for="#k2"><script type="application/json">
+{ "object": "#pball",
+  "anchors": [ { "selector": "#pball" }, { "selector": "#ball2" } ],
+  "stops": [ { "segment": "s", "at": 0, "anchor": 0, "fx": "cut" }, { "segment": "s", "at": 0.6, "for": 1.4, "anchor": 1, "fx": "fall" } ] }
+</script></explainer-flight>
+</main>
+
+<script type="module">
+  import { phraseTimes } from '../../src/experimental/flight/pure.ts';
+  // ?render: the players get the render attribute before they start (flights then do nothing)
+  if (location.search.includes('render')) document.querySelectorAll('explainer-player').forEach((p) => p.setAttribute('render', ''));
+  // Phrase times from the narration's captions. A site does this at build time (Astro, node) and writes the numbers into the markup;
+  // this example has no build step, so it fills the attributes in before the players start (the library is imported after).
+  const vtt = await (await fetch(new URL('karaoke.vtt', import.meta.url))).text();
+  const phrases = [...new Set([...document.querySelectorAll('template')].flatMap((t) => [...t.content.querySelectorAll('[data-phrase]')].map((e) => e.dataset.phrase)))];
+  const at = phraseTimes(vtt, phrases);
+  const times = new Map(phrases.map((p, i) => [p, at[i]]));
+  for (const tpl of document.querySelectorAll('template'))
+    for (const e of tpl.content.querySelectorAll('[data-phrase]')) e.setAttribute('data-marker-at', String(times.get(e.dataset.phrase)));
+  // the flight that falls out at "carry on"
+  const [carryOn] = phraseTimes(vtt, ['carry on']);
+  for (const s of document.querySelectorAll('explainer-flight script')) {
+    const cfg = JSON.parse(s.textContent);
+    for (const st of cfg.stops) if (st.phrase) { st.at = carryOn; delete st.phrase; }
+    s.textContent = JSON.stringify(cfg);
+  }
+  await import('../../src/index.ts');
+  await import('../../src/experimental/flight/index.ts');
+</script>
+</body>
+</html>

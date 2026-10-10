@@ -280,6 +280,16 @@ Elements without `data-at` are untouched. The built-in effects overwrite the pro
 .hl[data-fx="hl-draw"] { background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 100%;
   background-size: calc(var(--fx-p, 1) * 100%) var(--hl-height); }
 ```
+**Extension point: `registerSceneExtension`.** A pack can add behaviour to scenes that the core does not know (a stable, generic mechanism, exported from the main entry; the experimental flight module's marker is built on it).
+```ts
+registerSceneExtension<State>({
+  name: 'my-ext',
+  mount(root) { /* once per scene mount, after the template is cloned in: find your elements */ return state; /* or undefined: not for this scene */ },
+  render(root, state, t, dur) { /* at the END of every scene render */ },
+});
+```
+`render` runs after the built-in choreography (so measured positions include `rise` transforms) with `t = p * dur` seconds from the cue start, and must be a pure function of `(t, layout)`: nothing may be kept between renders except `state` (what `mount` found). A duplicate name throws; an extension registered after a scene mounted is mounted into it at its next render, so import order does not matter. `test/scene-extension.test.ts` checks history independence with one registered.
+
 **The static page is the fallback.** Outside a player nothing sets `--fx-p`, so `var(--fx-p, 1)` is 1 and the markup is complete: that is what the page shows without JavaScript, in print, and as the poster. Write every scene CSS with the `1` fallback.
 
 **Design canvas.** `canvas="1280x720 720x900@<600"` on the player: a list of `WxH` entries (CSS px), each optionally with `@<N` ("use when the player is narrower than N px"). Conditioned entries are tried in order and the first that holds wins; otherwise the first entry with no condition is the fallback (if there is none, the last entry). The stage then holds a canvas element of exactly W×H CSS px, `transform: scale(stageWidth / W)` from the top-left, and the stage height is `stageWidth * H / W`. All cue layers (and the media element) render inside it; captions and the caption strip stay outside. The canvas element gets `data-canvas="WxH"` and `container-type: size`, so a site restyles per canvas with `[data-canvas="720x900"] .scene { … }` or container queries. It is re-chosen on resize (`ResizeObserver` on the player) and repainted. Changing the attribute re-initialises the player. Without `canvas` the stage is the 16:9 `cqw` stage, as before. Pure parsing and choice: `parseCanvas`, `chooseCanvas` (`src/design-canvas.ts`).

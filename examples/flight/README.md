@@ -7,6 +7,7 @@ An object (a logo) moves between **anchors** on one reversible timeline: a box o
 ## Files
 
 - `index.html`, `flight.css`: three players, each with its own flight (demo 3: a scene logo whose ring stays behind). `?render` gives the players the `render` attribute.
+- `karaoke.html`, `karaoke.css`, `karaoke.vtt`: the in-video marker (a ball hopping to concepts on the narration's phrases, times from `phraseTimes`), the handoff to the page (the ball falls out of the video) and the reverse. `check-karaoke.mjs` checks it in Chromium; rendered offline (`node scripts/render.mjs --page http://localhost:5199/examples/flight/karaoke.html --selector '#k1' --mode overlay`) the ball is in the video and the flight does nothing. Captions: a `none` segment has no media element, so the player draws no captions for it (the VTT is read only for the phrase times).
 - `guide.html`: one object carried through three parts of a page (`?mode=scrub` for scrub mode).
 - `check.mjs` (index) and `check-guide.mjs` (guide): headless Chromium checks. `npm run check:flight` runs both; they need a server, so start `npx vite --port 5199 --strictPort` from the repo root first (`URL=` overrides the page, `PLAYWRIGHT=` the playwright module, `SHOTS=` or the first argument the screenshot directory, default `<os tmpdir>/explainer-flight/{index,guide}`). Exit 1 on a failed assertion.
 - The pure and element tests are `test/flight-*.test.ts`, part of `npm test`.

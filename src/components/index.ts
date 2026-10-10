@@ -6,5 +6,5 @@ import type { Component } from './base.ts';
 
 export * from './base.ts';
 export * from './canvas.ts';
-export { scene, sceneStillP, choreoOf, fxProgress, findSceneTemplate, SCENE_FX } from './scene.ts';
+export { scene, sceneStillP, choreoOf, fxProgress, findSceneTemplate, SCENE_FX, registerSceneExtension, sceneExtensions, type SceneExtension } from './scene.ts';
 export const corePack: Component[] = [intro, numberedList, choice, scene];

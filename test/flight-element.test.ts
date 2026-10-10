@@ -248,3 +248,27 @@ test('one DOM query per selector per paint', () => {
   for (const s of ['#logo', '#a1', '#end']) assert.equal(calls.filter((c) => c === s).length, 1, `${s} queried once (${calls.join(' ')})`);
   assert.equal(calls.filter((c) => c === 'template').length, 0, 'templates are not scanned once the flier is built');
 });
+
+test('arrival marking: data-flight-here where the object rests, --flight-p on the target while moving (1 at rest), restored on disconnect', () => {
+  reset();
+  const el = page();
+  const mark = (id: string) => ({ here: $('#' + id).hasAttribute('data-flight-here'), p: ($('#' + id) as any).style.getPropertyValue('--flight-p') });
+  assert.deepEqual([mark('logo'), mark('a1'), mark('end')], [{ here: true, p: '1' }, { here: false, p: '' }, { here: false, p: '' }], 'rests at the first anchor');
+  time($('#p1'), 's1', 1.5); el.flush();
+  assert.deepEqual([mark('logo'), mark('a1')], [{ here: false, p: '' }, { here: false, p: '0.5' }], 'moving toward a1: its progress');
+  time($('#p1'), 's1', 2); el.flush();
+  assert.deepEqual([mark('a1'), mark('end')], [{ here: true, p: '1' }, { here: false, p: '' }], 'landed on a1 (not a home: the flier stays, the page is still marked)');
+  time($('#p2'), 's2', 2); el.flush();
+  assert.deepEqual([mark('a1'), mark('end')], [{ here: false, p: '' }, { here: true, p: '1' }]);
+  time($('#p2'), 's2', 0.5); time($('#p1'), 's1', 0); el.flush();
+  assert.deepEqual([mark('logo'), mark('end')], [{ here: true, p: '1' }, { here: false, p: '' }], 'reverse: back at the start');
+  el.remove();
+  assert.equal(document.querySelectorAll('[data-flight-here]').length, 0);
+  assert.equal(($('#logo') as any).style.getPropertyValue('--flight-p'), '');
+});
+
+test('arrival marking: nothing in the render mode', () => {
+  reset();
+  page(CFG, { p2: { render: '' } });
+  assert.equal(document.querySelectorAll('[data-flight-here]').length, 0);
+});
