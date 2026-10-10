@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
 ### Added
 - Scene extension point: `registerSceneExtension({ name, mount(root), render(root, state, t, dur) })`. `mount` runs once per scene mount (return `undefined` to opt out), `render` at the end of every scene render, after the built-in choreography. Pure by contract; a late registration is mounted at the scene's next render. README "Scenes", `test/scene-extension.test.ts`.
 
