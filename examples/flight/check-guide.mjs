@@ -1,13 +1,17 @@
 // Headless-Chromium checks of guide.html: one object carried through three parts by player clocks and scroll stretches.
 //   npx vite --port 5199 --strictPort &      (from the repo root)
-//   node examples/flight/check-guide.mjs [shotDir]
+//   node examples/flight/check-guide.mjs [shotDir]      (default: <os tmpdir>/explainer-flight/guide, or $SHOTS)
 // Both modes (play="enter" and ?mode=scrub). Clocks are controlled by seeking (enter mode: paused first), then a realistic enter run is only recorded.
-import { chromium } from '/home/greenman/dev/semanticops/srs-web/node_modules/playwright/index.mjs';
 import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// playwright: PLAYWRIGHT=/path/to/playwright/index.mjs, else the srs-web install named in CLAUDE.md, else the `playwright` package
+const PW = process.env.PLAYWRIGHT ?? '/home/greenman/dev/semanticops/srs-web/node_modules/playwright/index.mjs';
+const { chromium } = await import(PW).catch(() => import('playwright'));
+
 const BASE = process.env.URL ?? 'http://localhost:5199/examples/flight/guide.html';
-const SHOTS = process.argv[2] ?? '/tmp/claude-1000/-home-greenman-dev-explainer/b1c290b7-5e3e-4284-b01d-b3d5ea0b84d2/scratchpad/flight2';
+const SHOTS = process.argv[2] ?? process.env.SHOTS ?? join(tmpdir(), 'explainer-flight', 'guide');
 mkdirSync(SHOTS, { recursive: true });
 let fails = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`); if (!cond) fails++; };
@@ -25,7 +29,7 @@ async function open(mode, opts = {}) {
   await page.waitForFunction(() => document.querySelectorAll('[data-flight-layer]').length === 1 && ['#p1', '#p2', '#p3'].every((s) => document.querySelector(s).clock));
   return { ctx, page };
 }
-const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+const frames = (page) => page.evaluate(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); document.querySelectorAll('explainer-flight').forEach((f) => f.flush()); });
 const snap = (page) => page.evaluate(({ ANCHORS, NAMES }) => {
   const fl = document.querySelector('[data-flight-layer]').firstChild;
   const rc = (el) => { const b = el.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; };
@@ -128,6 +132,17 @@ for (const mode of ['enter', 'scrub']) {
   let moving = 0, n = 0;
   for (let y = 0; y <= max; y += 100) { const s = await settle(page, 'enter', y, [2, 5, 10]); n++; if (s.where === 'moving') moving++; }
   ok(moving === 0, `reduced motion: at ${n} scroll positions the object is always at an anchor or a home, never between (${moving} in between)`);
+  await ctx.close();
+}
+
+// ---- reduced motion at load: the players sit at their still time (the end of their segments) but the reader has not reached them
+{
+  const { ctx, page } = await open('enter', { reducedMotion: 'reduce' });
+  await page.waitForTimeout(300);
+  await frames(page);
+  const s = await snap(page);
+  console.log('   reduced motion at load:', JSON.stringify({ where: s.where, clocks: s.clocks }));
+  ok(s.where === 'header' || s.where === 'part1', `reduced motion at load (players at their still time ${JSON.stringify(s.clocks)}): the object is at ${s.where}, not pinned at the last player stop`);
   await ctx.close();
 }
 

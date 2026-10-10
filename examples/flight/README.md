@@ -1,65 +1,19 @@
 # Flights: breaking the wall (experiment)
 
-An object (a logo) moves between **anchors** on one reversible timeline. An anchor is a box on the page outside the player, or a box inside
-the player's canvas. Scrubbing backwards runs it in reverse. This is a capability probe: it lives in `examples/flight/`, not in `src/`, and
-does not change the player. Open `/examples/flight/` (`npm run dev`).
+Demo pages and findings for `<explainer-flight>`. The code is **experimental** and lives in [`src/experimental/flight/`](../../src/experimental/flight/README.md) (config, stops and drivers, the last-started rule, the effect contract and how to add one, homes and stays, reduced motion, painting, known limits). Import path: `explainer/experimental/flight`. These pages import `../../src/experimental/flight/index.ts`. Status and what "experimental" means: [`src/experimental/README.md`](../../src/experimental/README.md).
 
-Why it is drawn outside: the stage and the design canvas are `overflow:hidden`, so nothing inside a scene can leave the video. The flier
-is a clone of the object in a page-level layer (`position:fixed; inset:0; pointer-events:none; z-index:2147483000`).
+An object (a logo) moves between **anchors** on one reversible timeline: a box on the page outside the player, or a box inside the player's canvas. Open `/examples/flight/` (`npm run dev`).
 
 ## Files
 
-- `flight.ts`: pure, no DOM. The chain (what the element uses): `chainBoxAt(stops, progress[], rects)`, `playerProgress`, `scrollProgress`, `scrollStop`, `settleProgress`, `homeVisibility`. The first single-player form is kept and tested but no longer used by the element: `flightBoxAt(stops, rects, segmentId, T)`, `flightStateAt`, `settledTime`, `fallAt` (shared).
-- `flight-element.ts`: `<explainer-flight>`. Measures anchors and scroll stretches, listens to `explainer:time` of every referenced player, paints.
-- `index.html`, `flight.css`: three players, each with its own flight (demo 3: a scene logo whose ring stays). `guide.html`: one object through three parts of a page (`?mode=scrub` for scrub mode).
-- `check.mjs` (index) and `check-guide.mjs` (guide): headless checks. `flight.test.ts`: pure tests.
-
-## Markup
-
-```html
-<explainer-flight for="#p2"><script type="application/json">
-{ "object": "#logo2",
-  "anchors": [ { "selector": "#logo2" }, { "selector": "#bl-a, #bl-b" }, { "canvas": [1136, 576, 96, 96] } ],
-  "stops": [ { "segment": "s2", "at": 0, "anchor": 0, "fx": "cut" }, { "segment": "s2", "at": 0.5, "for": 1.2, "anchor": 1, "fx": "fall" } ] }
-</script></explainer-flight>
-```
-
-- `object`: the page element that is the thing. It is cloned for the flier (ids and `data-flight-home` stripped).
-- Anchor `{selector}`: any element in the document, including one inside a scene (scenes are light DOM). A comma list takes the first match that has a box.
-  Anchor `{canvas:[x,y,w,h]}`: design-canvas px of the player, mapped to the screen through `[data-canvas]` (its width over the `WxH` in the attribute).
-- Stop: from `at` the object goes to `anchor` over `for` seconds with `fx`: `cut` (jump), `glide` (ease-in-out), `fall` (gravity: x eases, y accelerates, a wobble, a damped bounce under the landing line, exact landing), `pop` (appears at its anchor: scale 0 to 1 with overshoot, opacity in).
-- Only stops of the segment the player is in count. Constants (`FALL_*`, `POP_*`) are named in `flight.ts`.
-
-## Stops, drivers, and the last-started rule
-
-`for` is now optional. A stop has a *driver* and a progress q:
-
-- **Player stop** `{ "player": "#p1", "segment": "s1", "at": 2, "for": 1, "anchor": 1, "fx": "fall" }` (`player` defaults to the element's `for`, so old configs work). q = (t - at) / for in that segment (1 for `cut` or `for` 0). Not started (IDLE) while the player is in another segment or t < at.
-- **Scroll stop** `{ "scroll": { "from": "#part1", "to": "#part2" }, "anchor": 2, "fx": "glide" }`. q = (line - fromBottom) / (toTop - fromBottom), clamped to 0..1, where `line` is the viewport middle (`innerHeight / 2`), `fromBottom` the bottom edge of `from` and `toTop` the top edge of `to`, all from `getBoundingClientRect`. So q is 0 when the `from` part's bottom crosses the middle of the screen and 1 when the `to` part's top reaches it: the gap between two parts scrolling past the middle. Not started while q <= 0. If the parts touch or overlap (gap <= 0) it is a step at the line. Needs room to scroll: if the `to` element is near the bottom of the page its top may never reach the middle (found in `guide.html`, see Findings).
-- **The rule.** Stops are in declared order. The object is placed by the LAST stop that has started. It moves from where it was at the end of the previous stop to this stop's anchor, with this stop's `fx` and q. "Where it was" is the previous stop's anchor if that stop is finished or never started (a stop that was skipped counts as done, so a fast scroll never leaves the object stranded at an older anchor), or, if the previous stop is still moving, where it is now (recursive). Before any stop has started the object rests at the first stop's anchor (absent if that stop is a `pop`). All of it is `chainBoxAt(stops, progress, rects)`, a pure function of the per-stop progress values the element computes; it is tested for order independence, continuity at every start and end, the fast-scroll case and reverse (values going down undo the moves).
-- This replaces the single-player rule for interrupted moves: the earlier stop's progress keeps running, so the "from" point can drift while the later stop is under way. Within one player and with non-overlapping stops it is identical.
-- **Consequence of "last started wins".** Stops of different drivers can disagree: if a player-clock stop later in the list has started (a player that has reached its end), a scroll stop earlier in the list going back to 0 does not move the object until that player's clock goes back below the later stop. See Findings.
-
-## Homes inside a scene, and a piece that stays behind
-
-- The object and homes are looked up on every paint, not at connect. A scene's markup is cloned into the player's light DOM when the scene mounts, which can be after this element connects. If `object` matches nothing live, the first match inside a `<template>`'s content is used for the flier clone; the live element becomes a home when it appears. Homes that leave the document are forgotten.
-- `data-flight-stays` on descendants of a home: while the object is not at that home, the home is `visibility:hidden` and each `[data-flight-stays]` descendant is `visibility:visible` (a child can override an inherited `hidden`), so that part stays. The flier clone is the home without its stays parts, with ids, home and stays marks and inline style removed (scene choreography sets `opacity`, `--fx-p` on a live element), so the clone must not depend on scene-scoped CSS: use presentation attributes (demo 3's SVG does). At the home both are restored to what they were. Everything is restored on disconnect.
-- A flier whose rect has no size (a home that is not mounted yet) is not drawn.
-- **Render mode** stays inert: flights do not render offline. In a video the scene element simply stays whole. That is the intended behaviour: it falls out on the page, and stays in the video. (Checked: with `render` on a referenced player there is no layer and no home gets an inline visibility. Not checked with `scripts/render.mjs` itself.)
-- Demo 3: the logo (ring + dot) in the scene is the object and home at rest, `data-at`/`data-fx="fade"` on it brings it in. At 6 s the dot falls to the page block; the page block has the same logo markup, so it shows an empty ring (the stays part) until the dot lands in it.
+- `index.html`, `flight.css`: three players, each with its own flight (demo 3: a scene logo whose ring stays behind). `?render` gives the players the `render` attribute.
+- `guide.html`: one object carried through three parts of a page (`?mode=scrub` for scrub mode).
+- `check.mjs` (index) and `check-guide.mjs` (guide): headless Chromium checks. `npm run check:flight` runs both; they need a server, so start `npx vite --port 5199 --strictPort` from the repo root first (`URL=` overrides the page, `PLAYWRIGHT=` the playwright module, `SHOTS=` or the first argument the screenshot directory, default `<os tmpdir>/explainer-flight/{index,guide}`). Exit 1 on a failed assertion.
+- The pure and element tests are `test/flight-*.test.ts`, part of `npm test`.
 
 ## The guide page
 
 `guide.html` (`?mode=scrub` for scrub mode): header circle (sticky header, the object's first home), three players, a page home at the end. Stops: (1) header, (2) p1 clock 0.5 s: falls into part 1, (3) scroll stop part 1 to part 2: carried down the gap, (4) p2 clock 2.5 s: glides to a second anchor inside part 2, (5) p2 clock 8.5 s: falls out of part 2 into part 3's anchor, (6) scroll stop part 3 to the end block. Stop 6 is a scroll stop on purpose: the end block is far below part 3 and a clock stop would land the circle there while the reader is still watching part 3; a scroll stop is paced by the reader and reversible by scrolling. Stop 5 is a clock stop as asked: the circle lands in part 3 when part 2 ends, even with part 3 below the fold. `?mode=scrub` makes every part `play="scrub"` with `scrub-root="#partN"`, parts 230vh tall and the players sticky.
-
-
-- Before the first stop the object rests at the first stop's anchor, or does not exist if that stop is a `pop` (absent). Start with a `cut` stop at 0 for "starts here".
-- A stop that begins while the previous is still moving starts from where the object was just before (recursive, like `mediaBoxAt`), so the path is continuous.
-- The box is a pure function of `(segmentId, T, measured rects)`; any order of seeks gives the same result.
-- Homes: `data-flight-home` marks a real page element that shows the object (the object itself is one; so is any selector anchor you mark). While the object rests at a home, that element shows and the flier is hidden. At every other time all homes of the flight are `visibility:hidden` (layout kept), restored on disconnect. Without JavaScript every home shows (two logos in example 2): acceptable here.
-- Player with the `render` attribute: the element does nothing (no layer, homes untouched). Flights do not render offline.
-- `prefers-reduced-motion: reduce`: the move is a cut; the rest state of the latest activated stop is shown.
-- Anchors are measured with `getBoundingClientRect` at every paint, in viewport space, so the page can scroll during a flight. Repaint on `explainer:time`, `explainer:segment`, window scroll (capture, passive), resize and a ResizeObserver on the player.
 
 ## Findings
 
@@ -74,6 +28,8 @@ Observed with `check.mjs` in headless Chromium (1100x800), unless marked otherwi
 - **Paint cost:** 180 paints in 3 s of play with both players running: average 0.12 to 0.2 ms, max 0.8 ms (measured around `paint()`, including the anchor measures; not including the browser's own layout/composite afterwards). It forces layout reads each paint (`getBoundingClientRect` on each anchor), so a page with heavy layout would pay more. No attempt was made to cache.
 - **Reduced motion:** with `reducedMotion: reduce` the flier shows at the stop's anchor from the stop's `at` (cut), and lands at once at the last stop.
 - **Render attribute:** `?render` gives no flight layer and untouched homes.
+- **Fixed after the first review (module version):** reduced motion with `play="enter|scrub"` players: they sit at their still time, so every later player stop counted as started at load and the circle was pinned in part 2 or 3 at the top of the page (`check-guide.mjs`, "reduced motion at load"); a fallback rect saved in viewport px went stale on scroll (now document coordinates); the flier did not repaint on layout shifts (root, anchors and fonts/load are now observed); paints are batched per frame; the single-player API and its tests were removed (the chain handles the single-player config).
+- **One-frame lag (measured, `check.mjs`):** the flight paints in a `requestAnimationFrame` after the event, so it trails a player's own paint by one frame. With a probe box moved by the player's `explainer:time` at 300 px/s, the flier trailed it by about 5 px (16 ms) at the end of each frame; a scene `rise` moves 12 px in half a second, so about 0.4 px there. Visible only for fast-moving anchors.
 - **A bug found by the checks:** after the flier was hidden, an unchanged style string made the next show a no-op (it stayed `display:none`). Fixed by clearing the cached style when hiding.
 - **Not observed:** layering against a site's sticky header (this page has none; the layer has `z-index:2147483000` so it would be above it, and over a modal too), Safari/Firefox, touch devices, a real narrow viewport (the portrait canvas), fullscreen (a fixed layer on `body` would not be inside a fullscreen player), multi-segment explainers, and how the bounce looks to a human (only screenshots at single frames were looked at).
 - The `explainer:time` event only fires when `t` or the segment changes, so a player that is idle gives no repaint on its own; the element paints once on connect from the player's clock if there is one.
@@ -94,7 +50,7 @@ Observed with `check.mjs` in headless Chromium (1100x800), unless marked otherwi
 
 For the owner deciding whether to adopt this into the engine. Marked [observed] or [not observed].
 
-**Size.** `flight.ts` 160 lines pure (about 58 for the chain, about 100 for the earlier single-player form, which the element no longer calls: it can be deleted, leaving about 100 pure lines). `flight-element.ts` 183 lines DOM (measurement, listeners, lazy lookup, stays, flier layer). `flight.test.ts` 207 lines (20 tests, including the chain). `check.mjs` + `check-guide.mjs` about 380 lines of browser checks. Page markup for the guide: one JSON block of 6 stops and 6 anchors, plus the anchor boxes in the scenes. `src/` is unchanged.
+**Size (before the move into `src/experimental/`).** The pure chain was about 100 lines, the element 183 lines DOM (measurement, listeners, lazy lookup, stays, flier layer), the tests 207 lines, `check.mjs` + `check-guide.mjs` about 380 lines of browser checks. The module now has the effects as separate files, the registry, the drivers and the element, with tests in `test/flight-*.test.ts`. Page markup for the guide: one JSON block of 6 stops and 6 anchors, plus the anchor boxes in the scenes. The stable `src/` is unchanged (the module is not exported from the main entry).
 
 **Per-paint cost.** [observed] Demo page, two players playing at once: 180 paints in 3 s, 0.1 to 0.15 ms average, 0.4 ms max (around `paint()`, anchor measures included; before the chain change the figures were similar). The guide has one flight, three players and scrolling: not separately measured, but each paint reads the rects of up to 6 anchors and of 2 elements per scroll stop (roughly 10 `getBoundingClientRect` calls), plus a `querySelectorAll` for the object, the homes and the stays parts, so it should be a few times the demo figure. [not observed] on a heavy page: every call forces layout if anything is dirty, and the scroll listener repaints on every scroll event (capture, passive), which can be every frame.
 
@@ -104,6 +60,6 @@ For the owner deciding whether to adopt this into the engine. Marked [observed] 
 
 **Layering.** [observed] above a sticky header; the layer is the highest z-index possible and sits in `body`, so it is also above modals and, [not observed] but by construction, not inside a fullscreen player (a fullscreen element hides the rest of the page). The page cannot choose to put it under something.
 
-**What moving it into `src/` would take.** (1) API: an element `<explainer-flight>` with the JSON config above, or, better, attributes on the page markup (`data-flight-home`, `data-flight-stays`, a `data-flight="part1:0.5 for 1.2 fall"`-style line) so the page needs no JSON block. (2) Manifest/schema: the clock stops belong to a player and could live in its manifest (a `flights` list: object, anchors by selector or canvas, stops with segment/at/for/fx), which would let `render` skip them knowingly and a page-level tool read them; the scroll stops and the homes are page facts and cannot be in a player's manifest. A page-level config is therefore needed in any case, and the SRS types (plan step 3) would need a flight/stop type with a driver choice. (3) The pure module and its tests move over as they are, about 100 lines plus the tests. (4) The element needs the lazy-lookup and stays logic hardened and a decision on how a scroll stop and a clock stop of one player arbitrate (see Failure modes). (5) The render path: today inert; a composite render of a flight that stays in the video would need the chain plus real rects, which the offline render does not have.
+**What making it stable would take** (it now lives in `src/experimental/`; see the promotion criteria in `src/experimental/README.md`). (1) API: an element `<explainer-flight>` with the JSON config above, or, better, attributes on the page markup (`data-flight-home`, `data-flight-stays`, a `data-flight="part1:0.5 for 1.2 fall"`-style line) so the page needs no JSON block. (2) Manifest/schema: the clock stops belong to a player and could live in its manifest (a `flights` list: object, anchors by selector or canvas, stops with segment/at/for/fx), which would let `render` skip them knowingly and a page-level tool read them; the scroll stops and the homes are page facts and cannot be in a player's manifest. A page-level config is therefore needed in any case, and the SRS types (plan step 3) would need a flight/stop type with a driver choice. (3) The pure module and its tests move over as they are, about 100 lines plus the tests. (4) The element needs the lazy-lookup and stays logic hardened and a decision on how a scroll stop and a clock stop of one player arbitrate (see Failure modes). (5) The render path: today inert; a composite render of a flight that stays in the video would need the chain plus real rects, which the offline render does not have.
 
 **Recommendation.** As a capability it is cheap and it works: it is a small pure core and one 183-line element with no change to the player, and both owner stories are met (a piece that stays behind; one circle carried through three parts). It is not yet something to ship in `src/`. Main risks: (1) enter mode with scroll stops gives a surprising result on scroll-back and on fast jumps, so the guide pattern is only reliable with `play="scrub"` (or all-clock stops); (2) a fixed top-of-everything layer cannot respect a site's own stacking; (3) accessibility rests on a decorative flier and on hiding the real element, which has not been tried with assistive technology; (4) paint is driven by scroll events and forces layout. A reasonable next step is to keep it in `examples/` (or a site pack) behind the muDemocracy pilot's needs, and move it only if a page needs it that scrub mode cannot serve.

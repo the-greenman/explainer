@@ -1,13 +1,17 @@
 // Headless-Chromium checks of the flight example.
 //   npx vite --port 5199 --strictPort &      (from the repo root)
-//   node examples/flight/check.mjs [shotDir]
+//   node examples/flight/check.mjs [shotDir]      (default: <os tmpdir>/explainer-flight/index, or $SHOTS)
 // Order independence, rest placement, leaving the stage, render mode, scroll during flight, reverse, paint cost. Exit 1 on a failed assertion.
-import { chromium } from '/home/greenman/dev/semanticops/srs-web/node_modules/playwright/index.mjs';
 import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// playwright: PLAYWRIGHT=/path/to/playwright/index.mjs, else the srs-web install named in CLAUDE.md, else the `playwright` package
+const PW = process.env.PLAYWRIGHT ?? '/home/greenman/dev/semanticops/srs-web/node_modules/playwright/index.mjs';
+const { chromium } = await import(PW).catch(() => import('playwright'));
+
 const BASE = process.env.URL ?? 'http://localhost:5199/examples/flight/index.html';
-const SHOTS = process.argv[2] ?? '/tmp/claude-1000/-home-greenman-dev-explainer/b1c290b7-5e3e-4284-b01d-b3d5ea0b84d2/scratchpad/flight';
+const SHOTS = process.argv[2] ?? process.env.SHOTS ?? join(tmpdir(), 'explainer-flight', 'index');
 mkdirSync(SHOTS, { recursive: true });
 let fails = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`); if (!cond) fails++; };
@@ -30,6 +34,7 @@ const cfg = [
 const at = (c, t, scroll = false) => page.evaluate(async ({ c, t, scroll }) => {
   const p = document.querySelector(c.p); if (!scroll) p.scrollIntoView({ block: 'center' }); p.seek(t);
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  document.querySelectorAll('explainer-flight').forEach((f) => f.flush()); // paints are batched per frame; flush so the read is of the settled state
   const flier = document.querySelectorAll('[data-flight-layer]')[c.layer].firstChild;
   const rc = (el) => { const b = el.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; };
   const on = getComputedStyle(flier).display !== 'none';
@@ -102,6 +107,7 @@ ok(!r.flier && r.homes[1] === 'visible' && r.homes[0] === 'hidden', 'p2 t=10: la
 const d3 = (t) => page.evaluate(async (t) => {
   const p = document.querySelector('#p3'); p.scrollIntoView({ block: 'start' }); p.seek(t);
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  document.querySelectorAll('explainer-flight').forEach((f) => f.flush()); // paints are batched per frame; flush so the read is of the settled state
   const vis = (s) => getComputedStyle(document.querySelector(s)).visibility;
   const fl = document.querySelectorAll('[data-flight-layer]')[2].firstChild;
   const b = fl.getBoundingClientRect(), on = getComputedStyle(fl).display !== 'none';
@@ -154,6 +160,7 @@ const rev = await page.evaluate(async () => {
   const p = document.querySelector('#p2'); p.setRate(-1); p.play();
   await new Promise((r) => setTimeout(r, 700)); p.pause();
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  document.querySelectorAll('explainer-flight').forEach((f) => f.flush()); // paints are batched per frame; flush so the read is of the settled state
   const f = document.querySelectorAll('[data-flight-layer]')[1].firstChild;
   return { t: p.clock.t, style: f.getAttribute('data-s') ?? '', on: getComputedStyle(f).display !== 'none' };
 });
@@ -173,6 +180,40 @@ const cost = await page.evaluate(async () => {
 console.log('   paint cost (3 s of play, two players at once):', JSON.stringify(cost));
 ok(cost.every((c) => c.paints > 30 && c.avgMs < 1), 'paint cost under 1 ms average per frame');
 
+// ---- one-frame lag: the flight paints in a requestAnimationFrame after the event that marked it dirty. An anchor inside a moving scene
+// element is the worst case, so a probe box is moved by the player's own explainer:time (as a scene's choreography is) at 300 px/s, and a
+// second flight rests on it. Recorded, not asserted tightly: the lag is how far the flier trails the probe at the end of each frame.
+const lag = await page.evaluate(async () => {
+  const p = document.querySelector('#p2');
+  const probe = Object.assign(document.createElement('div'), { id: 'lagprobe' });
+  probe.style.cssText = 'position:absolute;left:0;top:300px;width:40px;height:40px';
+  const tpl = document.createElement('template');
+  tpl.innerHTML = '<i id="lagobj" style="display:block;width:40px;height:40px;background:#c00"></i>';
+  const fl = document.createElement('explainer-flight');
+  fl.setAttribute('for', '#p2');
+  fl.innerHTML = '<script type="application/json">{"object":"#lagobj","anchors":[{"selector":"#lagprobe"}],"stops":[{"segment":"s2","at":0,"anchor":0,"fx":"cut"}]}<\/script>';
+  document.body.append(probe, tpl, fl);
+  p.scrollIntoView({ block: 'center' });
+  const px = []; const frames = [];
+  p.addEventListener('explainer:time', (e) => { probe.style.left = e.detail.t * 300 + 'px'; probe.dataset.f = String(document.timeline.currentTime); });
+  const layer = [...document.querySelectorAll('[data-flight-layer]')].pop();
+  // sample at the end of every frame (a task posted from a rAF callback runs after all of that frame's callbacks): the state a frame shows
+  let run = true;
+  const sample = () => { if (!run) return; requestAnimationFrame(() => setTimeout(() => { px.push(probe.getBoundingClientRect().left - layer.firstChild.getBoundingClientRect().left); sample(); }, 0)); };
+  const flush = fl.flush.bind(fl);
+  fl.flush = () => { const before = fl.stats.paints; flush(); if (fl.stats.paints > before) frames.push(document.timeline.currentTime - Number(probe.dataset.f)); };
+  p.seek(0); p.setRate(1); p.play(); sample();
+  await new Promise((r) => setTimeout(r, 1500));
+  run = false;
+  p.pause();
+  await new Promise((r) => setTimeout(r, 50));
+  const out = { n: px.length, meanPx: px.reduce((a, b) => a + b, 0) / px.length, maxPx: Math.max(...px.map(Math.abs)), meanFrameMs: frames.reduce((a, b) => a + b, 0) / frames.length };
+  probe.remove(); tpl.remove(); fl.remove();
+  return out;
+});
+console.log('   one-frame lag (probe moving 300 px/s inside p2):', JSON.stringify(lag));
+ok(lag.n > 30 && lag.maxPx < 12, `the flier trails a moving anchor by at most ${lag.maxPx?.toFixed(1)} px (mean ${lag.meanPx?.toFixed(1)} px); its paint runs ${lag.meanFrameMs?.toFixed(1)} ms after the event that caused it`);
+
 // ---- reduced motion: no in-between frames
 const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 }, reducedMotion: 'reduce' });
 const rp = await ctx.newPage();
@@ -183,6 +224,7 @@ for (const t of [0.6, 0.9, 1.2, 9.2, 9.5]) {
   red.push(await rp.evaluate(async (t) => {
     document.querySelector('#p2').seek(t);
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  document.querySelectorAll('explainer-flight').forEach((f) => f.flush()); // paints are batched per frame; flush so the read is of the settled state
     const f = document.querySelectorAll('[data-flight-layer]')[1].firstChild;
     return { t, on: getComputedStyle(f).display !== 'none', land: getComputedStyle(document.querySelector('#land2')).visibility };
   }, t));

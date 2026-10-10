@@ -318,6 +318,9 @@ player.manifest = m; // <explainer-player> element
 `crossorigin` on `<explainer-player>` (e.g. `crossorigin="anonymous"`) is copied to the media element when it is created (not observed; set it before the manifest) and `<track>` inherits it. Needed when the VTT is cross-origin (it then needs CORS headers); a same-origin VTT with cross-origin audio works without it.
 Theme: CSS variables on the player or an ancestor; see the Theme section for every token.
 
+## Experimental
+`src/experimental/` holds modules that are **not part of the stable API**: they are not exported from `explainer`, each has its own subpath (`explainer/experimental/<name>`), they may change in any minor release, and the compatibility promises in the CHANGELOG do not cover them. See `src/experimental/README.md` for what that means and how a module is promoted. Today: `flight` (one object flying between anchors inside and outside players; effects are pluggable modules), with demos in `examples/flight/` and `npm run check:flight` (needs `npx vite --port 5199 --strictPort` running).
+
 ## Releases
 Releases are tags; see `CHANGELOG.md`. After a PR is merged to `main` and the changelog's "Unreleased" entries are moved under a version heading, the owner tags `vX.Y.Z` on `main`. A site pins the tag: `"explainer": "github:the-greenman/explainer#vX.Y.Z"`. `dist/` is not committed: the package has a `prepare` script (`vite build`), which npm runs after installing a dependency's devDependencies when it is fetched from a repository, so `node_modules/explainer/dist/index.js` exists after `npm i`. A branch or commit works the same way: `github:the-greenman/explainer#<branch-or-sha>`.
 

@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Experimental
+These are not covered by the compatibility promises (see `src/experimental/README.md`).
+- `explainer/experimental/flight`: `<explainer-flight>`, one object flying between anchors inside and outside players, driven by player clocks and scroll stretches on a chain of stops. Effects are modules: `registerFlightEffects` / `getFlightEffect`, built-ins `cut`, `glide`, `fall`, `pop`, and a contract test that runs over every registered effect. Paints are batched per animation frame (`flush()`), repaint on layout shifts, fallbacks kept in document coordinates, reduced motion no longer counts players pinned at their still time as reached. Not exported from the main entry. Demos in `examples/flight/`, `npm run check:flight`.
+
 ## [0.3.0] - 2026-10-09
 
 ### Added
