@@ -1,4 +1,5 @@
 import { clamp01, ramp } from '../clock.ts';
+import { num } from '../num.ts';
 import { parseSlot, type SlotDef } from '../media-slots.ts';
 import { FADE_OFFSET } from '../motion.ts';
 import type { Component } from './base.ts';
@@ -20,7 +21,6 @@ export const SCENE_TRANSITIONS = ['cut', 'fade', 'wipe', 'wipe-left'];
 export type Choreo = { el: HTMLElement; at: number; len: number; fx: string };
 type Transition = 'cut' | 'fade' | 'wipe' | 'wipe-left';
 
-const num = (s: string | null | undefined, d: number) => { const n = s == null || s.trim() === '' ? NaN : Number(s); return Number.isFinite(n) ? n : d; };
 const quote = (s: string) => `"${s.replace(/["\\]/g, '\\$&')}"`;
 
 /** The elements of `root` that carry choreography, with their parsed timing. Derived from the markup only. */
@@ -159,7 +159,8 @@ export function registerSceneExtension<S>(ext: SceneExtension<S>) {
 export const sceneExtensions = (): SceneExtension<any>[] => [...extensions.values()];
 
 function mountExtensions(node: HTMLElement) {
-  const st = extState.get(node)!;
+  const st = extState.get(node);
+  if (!st) return; // a node this scene never mounted (hand-built, foreign): no extensions, and none are mounted into it
   for (const e of extensions.values()) if (!st.has(e.name)) st.set(e.name, e.mount(node));
 }
 
@@ -203,6 +204,7 @@ export const scene: Component = {
     }
     for (const c of mounted.get(node) ?? []) applyFx(c, fxProgress(c.at, c.len, t));
     mountExtensions(node as HTMLElement); // an extension registered since the mount
-    for (const e of extensions.values()) { const st = extState.get(node)!.get(e.name); if (st !== undefined) e.render(node as HTMLElement, st, t, dur); }
+    const es = extState.get(node); // absent for a node this scene never mounted: rendered without extensions
+    if (es) for (const e of extensions.values()) { const st = es.get(e.name); if (st !== undefined) e.render(node as HTMLElement, st, t, dur); }
   },
 };

@@ -1,6 +1,7 @@
 // <explainer-flight for="#player">: draws one object flying between anchors outside and inside players. EXPERIMENTAL (see ../README.md).
 // The paint is a pure function of (every driver's progress, measured rects); nothing accumulates between paints. Events only mark the
 // element dirty; one paint runs per animation frame.
+import { r3 } from '../../num.ts';
 import { arrivalOf } from './arrival.ts';
 import { chainBoxAt } from './chain.ts';
 import { gatePlayerProgress, playerProgress, scrollProgress, scrollStop, settleProgress } from './drivers.ts';
@@ -17,7 +18,6 @@ type Clk = { segmentId: string; t: number };
 type Measured = { rect: Rect; els: Element[]; el: Element | null }; // el: the matched element that gave the rect (null for a canvas anchor or a hidden one)
 
 const LAYER_STYLE = 'position:fixed;inset:0;pointer-events:none;z-index:2147483000;overflow:visible';
-const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const ZERO: Rect = { x: 0, y: 0, w: 0, h: 0 };
 const hasBox = (b: { width: number; height: number }) => b.width > 0 || b.height > 0;
 
@@ -42,10 +42,15 @@ export class ExplainerFlight extends HTMLElement {
   private dirty = false;
   private raf = 0;
   private cleanup: (() => void)[] = [];
+  private gen = 0; // connection generation: setup only goes on if its call is still the latest and the element is connected
+  private addedHome = new Set<Element>(); // objects this element put `data-flight-home` on (and so removes it from)
+  private scanTemplates = true; // look for the object in templates on the next paint (at connect and on a segment event, not every paint)
+  private warnedMissing = false;
 
   async connectedCallback() {
+    const mine = ++this.gen;
     if (document.readyState === 'loading') await new Promise<void>((r) => document.addEventListener('DOMContentLoaded', () => r(), { once: true }));
-    if (!this.isConnected) return;
+    if (mine !== this.gen || !this.isConnected) return; // disconnected (or reconnected, which started its own setup) while waiting
     try { this.cfg = JSON.parse(this.querySelector('script[type="application/json"]')?.textContent ?? ''); } catch { console.warn('<explainer-flight>: invalid JSON config'); return; }
     const dflt = this.getAttribute('for');
     const ps = new Map<string, Element>();
@@ -56,7 +61,9 @@ export class ExplainerFlight extends HTMLElement {
     this.drivers = this.cfg.stops.map((s): Driver => s.scroll ? { kind: 'scroll', ...s.scroll } : { kind: 'player', player: ps.get(s.player ?? dflt ?? '') as Element, segment: s.segment ?? '', at: s.at ?? 0, len: s.for ?? 0 });
     if (this.drivers.some((d) => d.kind === 'player' && !d.player)) { console.warn('<explainer-flight>: player not found'); return; }
     this.players = [...new Set(this.drivers.flatMap((d) => (d.kind === 'player' ? [d.player] : [])))];
-    this.canvasPlayer = (dflt && ps.get(dflt)) || this.players[0] || null;
+    // canvas anchors are in the `for` player's canvas even when no stop names it (`ps` only holds the players some stop names)
+    this.canvasPlayer = (dflt && document.querySelector(dflt)) || this.players[0] || null;
+    this.scanTemplates = true;
     // offline render: flights do not render; touch nothing
     if (this.players.some((p) => p.hasAttribute('render'))) return;
     this.chain = this.cfg.stops.map((s) => ({ anchor: s.anchor, fx: s.fx ?? 'cut' }));
@@ -82,8 +89,9 @@ export class ExplainerFlight extends HTMLElement {
       this.clocks.set(p, c ? { segmentId: c.segmentId, t: c.t } : { segmentId: first?.segment ?? '', t: 0 });
       const onTime = (e: Event) => { const d = (e as CustomEvent).detail; this.clocks.set(p, { segmentId: d.segmentId, t: d.t }); this.invalidate(); };
       p.addEventListener('explainer:time', onTime);
-      p.addEventListener('explainer:segment', again);
-      this.cleanup.push(() => p.removeEventListener('explainer:time', onTime), () => p.removeEventListener('explainer:segment', again));
+      const onSeg = () => { this.scanTemplates = true; this.invalidate(); }; // a new segment may mount the scene that holds the object
+      p.addEventListener('explainer:segment', onSeg);
+      this.cleanup.push(() => p.removeEventListener('explainer:time', onTime), () => p.removeEventListener('explainer:segment', onSeg));
     }
     addEventListener('scroll', again, { passive: true, capture: true });
     addEventListener('resize', again);
@@ -101,12 +109,15 @@ export class ExplainerFlight extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.gen++; // invalidates a setup still waiting for the document
     for (const f of this.cleanup.splice(0)) f();
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0; this.dirty = false;
     for (const [h, v] of this.touched) (h as HTMLElement | SVGElement).style.visibility = v;
     this.touched.clear();
     this.mark(null, null, 0);
+    for (const e of this.addedHome) e.removeAttribute('data-flight-home');
+    this.addedHome.clear();
     this.layer?.remove();
     this.layer = this.flier = null;
     this.clocks.clear();
@@ -218,7 +229,11 @@ export class ExplainerFlight extends HTMLElement {
     const live = all(this.cfg.object)[0] ?? null;
     if (!this.flier.firstChild) {
       let src: Element | null = live;
-      if (!src) for (const t of Array.from(document.querySelectorAll('template'))) { src = t.content.querySelector(this.cfg.object); if (src) break; }
+      if (!src && this.scanTemplates) {
+        this.scanTemplates = false; // scan again only after a segment event (or a reconnect), never on every paint
+        for (const t of Array.from(document.querySelectorAll('template'))) { src = t.content.querySelector(this.cfg.object); if (src) break; }
+        if (!src && !this.warnedMissing) { this.warnedMissing = true; console.warn(`<explainer-flight>: object "${this.cfg.object}" matches nothing in the page or its templates`); }
+      }
       if (src) this.buildFlier(src);
     }
     const measured = this.cfg.anchors.map((_, i) => this.measure(i, all, canvas, sx, sy));
@@ -230,7 +245,7 @@ export class ExplainerFlight extends HTMLElement {
     const box = chainBoxAt(this.chain, q, rects);
 
     // homes: the live object plus the first data-flight-home element of each selector anchor
-    live?.setAttribute('data-flight-home', '');
+    if (live && !live.hasAttribute('data-flight-home')) { live.setAttribute('data-flight-home', ''); this.addedHome.add(live); }
     const anchorHome = measured.map((m) => m.els.find((e) => e.hasAttribute('data-flight-home')) ?? null);
     const homes = new Set<Element>(anchorHome.filter((e): e is Element => !!e));
     if (live) homes.add(live);

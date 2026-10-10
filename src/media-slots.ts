@@ -1,5 +1,6 @@
 // Pure: where the media box is at segment time T, given the scenes' media slots. No DOM; the player measures the slot rects.
 import { inOut } from './motion.ts';
+import { num, r3 } from './num.ts';
 
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Fit = 'cover' | 'contain';
@@ -17,7 +18,6 @@ export const lerpRect = (a: Rect, b: Rect, x: number): Rect => ({
   x: a.x + (b.x - a.x) * x, y: a.y + (b.y - a.y) * x, w: a.w + (b.w - a.w) * x, h: a.h + (b.h - a.h) * x,
 });
 
-const num = (s: string | null | undefined, d: number) => { const n = s == null || s.trim() === '' ? NaN : Number(s); return Number.isFinite(n) ? n : d; };
 /** Timing and fit of a `data-media-slot` element from its attributes: `at` and `for` default to 0, fit to cover. */
 export function parseSlot(attr: (name: string) => string | null): Pick<SlotDef, 'at' | 'len' | 'fit'> {
   return { at: Math.max(0, num(attr('data-at'), 0)), len: Math.max(0, num(attr('data-for'), 0)), fit: attr('data-media-fit') === 'contain' ? 'contain' : SLOT_DEFAULT_FIT };
@@ -64,7 +64,6 @@ export function mediaBoxAt(scenes: SceneSlots[], visible: (i: number, T: number)
   return { hidden: false, rect: slot.rect, fit: slot.fit };
 }
 
-const r3 = (n: number) => Math.round(n * 1000) / 1000;
 /** Inline style for a box, in canvas px (position, size, fit, and opacity only when hidden). Rounded so an unchanged box gives an equal string. */
 export function boxStyle(b: MediaBox): string {
   const pos = 'position:absolute;';

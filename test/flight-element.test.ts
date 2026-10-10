@@ -7,7 +7,7 @@ import { parseHTML } from 'linkedom';
 
 const { document, HTMLElement, Element, customElements, window } = parseHTML('<!doctype html><html><head></head><body></body></html>');
 const g = globalThis as any;
-Object.defineProperty(document, 'readyState', { value: 'complete' });
+Object.defineProperty(document, 'readyState', { value: 'complete', configurable: true });
 let reduced = false;
 const mqListeners = new Set<() => void>();
 const winListeners: Record<string, ((e?: any) => void)[]> = {};
@@ -271,4 +271,73 @@ test('arrival marking: nothing in the render mode', () => {
   reset();
   page(CFG, { p2: { render: '' } });
   assert.equal(document.querySelectorAll('[data-flight-here]').length, 0);
+});
+
+test('canvas anchors map through the `for` player even when no stop names it', () => {
+  reset();
+  const cfg = { object: '#logo', anchors: [{ selector: '#logo' }, { canvas: [100, 50, 20, 20] }], stops: [{ player: '#p2', segment: 's2', at: 0, anchor: 0, fx: 'cut' }, { player: '#p2', segment: 's2', at: 1, for: 1, anchor: 1, fx: 'glide' }] };
+  const el = page(cfg);
+  // the canvases: #p1 (the `for` player) at (0,100) at half scale; #p2 at (0,1000) at full scale
+  for (const [id, y, w] of [['p1', 100, 640], ['p2', 1000, 1280]] as const) {
+    const c = document.createElement('div');
+    c.setAttribute('data-canvas', '1280x720');
+    stub(c, { x: 0, y, w, h: w / 16 * 9 });
+    $('#' + id).append(c);
+  }
+  time($('#p2'), 's2', 5); el.flush();
+  assert.match(flier().getAttribute('data-s')!, /translate\(50px,125px\)/, 'x 100 * 0.5, y 100 + 50 * 0.5, in the `for` player\'s canvas');
+});
+
+test('connect, disconnect, connect before the ready wait resolves: one layer; the final disconnect leaves none', async () => {
+  reset();
+  const el = page();
+  el.remove();
+  Object.defineProperty(document, 'readyState', { value: 'loading', configurable: true });
+  const listeners: (() => void)[] = [];
+  const add = document.addEventListener.bind(document);
+  (document as any).addEventListener = (n: string, f: () => void, o?: any) => { if (n === 'DOMContentLoaded') listeners.push(f); else add(n, f, o); };
+  try {
+    document.body.append(el);
+    el.remove();
+    document.body.append(el);
+  } finally { (document as any).addEventListener = add; Object.defineProperty(document, 'readyState', { value: 'complete', configurable: true }); }
+  assert.equal(listeners.length, 2);
+  listeners.forEach((f) => f());
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(document.querySelectorAll('[data-flight-layer]').length, 1);
+  el.remove();
+  assert.equal(document.querySelectorAll('[data-flight-layer]').length, 0);
+  assert.equal((winListeners.scroll ?? []).length, 0);
+  assert.equal((winListeners.resize ?? []).length, 0);
+});
+
+test('data-flight-home is removed from the object on disconnect when the element added it', () => {
+  reset();
+  const el = page();
+  assert.equal($('#logo').hasAttribute('data-flight-home'), true);
+  assert.equal($('#end').hasAttribute('data-flight-home'), true);
+  el.remove();
+  assert.equal($('#logo').hasAttribute('data-flight-home'), false, 'added by the element: removed');
+  assert.equal($('#end').hasAttribute('data-flight-home'), true, 'the site\'s own mark stays');
+});
+
+test('a missing object selector warns once across many paints and scans templates only at connect and after a segment event', () => {
+  reset();
+  const warns: string[] = [];
+  const w = console.warn; console.warn = (...a: any[]) => { warns.push(a.join(' ')); };
+  const orig = document.querySelectorAll.bind(document);
+  let scans = 0;
+  (document as any).querySelectorAll = (s: string) => { if (s === 'template') scans++; return orig(s); };
+  try {
+    const el = page({ ...CFG, object: '#nothing' });
+    scans = 0;
+    for (let i = 0; i < 10; i++) { time($('#p1'), 's1', 0.1 * i); el.flush(); }
+    assert.equal(scans, 0, 'no template scan on later paints');
+    assert.equal(warns.filter((x) => /#nothing/.test(x)).length, 1, 'warned once');
+    $('#p1').dispatchEvent(new window.CustomEvent('explainer:segment', { detail: { id: 's2' } })); el.flush();
+    assert.equal(scans, 1, 'one scan after a segment event');
+    for (let i = 0; i < 5; i++) { time($('#p1'), 's1', 0.2 * i); el.flush(); }
+    assert.equal(scans, 1);
+    assert.equal(warns.filter((x) => /#nothing/.test(x)).length, 1, 'still once');
+  } finally { console.warn = w; (document as any).querySelectorAll = orig; }
 });

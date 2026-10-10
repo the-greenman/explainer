@@ -126,3 +126,20 @@ test('pop in the middle of a chain appears at its anchor, not where the object w
   assert.deepEqual(b.rect, C[2]);
   assert.ok(b.scale > 0);
 });
+
+test('a stop interrupting a moving one keeps scale, opacity and rotation continuous, and still lands exactly', () => {
+  const st: ChainStop[] = [{ anchor: 0, fx: 'cut' }, { anchor: 1, fx: 'pop' }, { anchor: 2, fx: 'glide' }];
+  const interrupted = chainBoxAt(st, [1, 0.2, IDLE], C); // pop at p = 0.2: scale and opacity are well below 1
+  assert.ok(interrupted.scale < 1 && interrupted.opacity < 1);
+  const start = chainBoxAt(st, [1, 0.2, 0], C); // the glide starts at that moment
+  assert.ok(Math.abs(start.scale - interrupted.scale) < 1e-9, 'scale');
+  assert.ok(Math.abs(start.opacity - interrupted.opacity) < 1e-9, 'opacity');
+  assert.ok(Math.abs(start.rot - interrupted.rot) < 1e-9, 'rot');
+  assert.ok(rectsClose(start.rect, interrupted.rect, 1e-9), 'rect');
+  const near = chainBoxAt(st, [1, 0.2, 0.001], C);
+  assert.ok(Math.abs(near.scale - interrupted.scale) < 0.01 && Math.abs(near.opacity - interrupted.opacity) < 0.01, 'no jump just after the boundary');
+  const end = chainBoxAt(st, [1, 0.2, 0.999999], C);
+  assert.ok(rectsClose(end.rect, C[2], 0.5), 'lands at its anchor');
+  assert.ok(Math.abs(end.scale - 1) < 1e-3 && Math.abs(end.opacity - 1) < 1e-3, 'and with the effect\'s own scale and opacity');
+  assert.equal(chainBoxAt(st, [1, 0.2, 1], C).restAnchor, 2);
+});

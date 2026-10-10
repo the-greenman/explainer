@@ -134,6 +134,44 @@ test('reduced motion: rest states only', () => {
   } finally { delete (globalThis as any).matchMedia; }
 });
 
+test('under a player with the render attribute reduced motion never settles (offline render)', () => {
+  (globalThis as any).matchMedia = () => ({ matches: true });
+  try {
+    const root = mount();
+    const pl = root.ownerDocument.createElement('explainer-player');
+    pl.setAttribute('render', '');
+    root.parentNode.parentNode.append(pl);
+    pl.append(root.parentNode);
+    at(root, 1.4); // mid-hop to b
+    const p = pos(root)!;
+    assert.notDeepEqual(p, REST.b, 'not settled');
+    assert.notDeepEqual(p, REST.a);
+    assert.equal(root.querySelector('#b').hasAttribute('data-marker-here'), false);
+  } finally { delete (globalThis as any).matchMedia; }
+});
+
+test('rendering the same t twice writes nothing the second time', () => {
+  const root = mount();
+  at(root, 1.4);
+  const writes: string[] = [];
+  // spy on the prototypes (linkedom makes the style object on demand)
+  const sp = Object.getPrototypeOf(root.querySelector('#ball').style), ep = Object.getPrototypeOf(Object.getPrototypeOf(root.querySelector('#ball')));
+  const patched: [any, string, any][] = [];
+  const spy = (o: any, k: string) => { const orig = o[k]; patched.push([o, k, orig]); o[k] = function (...a: any[]) { writes.push(`${k}:${a[0]}`); return orig.apply(this, a); }; };
+  try {
+    spy(sp, 'setProperty'); spy(sp, 'removeProperty');
+    let o = ep; while (o && !Object.hasOwn(o, 'setAttribute')) o = Object.getPrototypeOf(o);
+    spy(o, 'setAttribute'); spy(o, 'removeAttribute');
+    at(root, 1.4);
+    // the scene root's own opacity is the scene's write, not the marker's
+    assert.deepEqual(writes.filter((w) => w !== 'setProperty:opacity'), [], 'no marker write the second time');
+    assert.ok(writes.filter((w) => w === 'setProperty:opacity').length <= 1);
+    writes.length = 0;
+    at(root, 2.1);
+    assert.ok(writes.some((w) => w === 'setProperty:transform'), 'a different t does write');
+  } finally { for (const [o, k, f] of patched) o[k] = f; }
+});
+
 test('no marker markup: the extension opts out and the scene is untouched', () => {
   const root = mount('<section><p>plain</p></section>');
   const before = root.querySelector('section').outerHTML;

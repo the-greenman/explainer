@@ -6,6 +6,7 @@
 // CSS px) and the stops' timing go through the same chain and effect registry as a flight, so there is no state between renders. It runs in
 // the offline render too (flights do not).
 import { SCENE_FX_DEFAULT_FOR, type SceneExtension } from '../../components/scene.ts';
+import { num, r3 } from '../../num.ts';
 import { arrivalOf } from './arrival.ts';
 import { chainBoxAt } from './chain.ts';
 import { playerProgress, settleProgress } from './drivers.ts';
@@ -16,8 +17,6 @@ export type MarkerPoint = 'left' | 'center' | 'top';
 type StopEl = { el: HTMLElement; at: number; len: number; fx: string; point: MarkerPoint };
 type Marker = { el: HTMLElement; stops: StopEl[] };
 
-const num = (s: string | null, d: number) => { const n = s == null || s.trim() === '' ? NaN : Number(s); return Number.isFinite(n) ? n : d; };
-const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const quote = (s: string) => `"${s.replace(/["\\]/g, '\\$&')}"`;
 const POINTS: MarkerPoint[] = ['left', 'center', 'top'];
 
@@ -28,7 +27,14 @@ export function markerPoint(b: { left: number; top: number; width: number; heigh
   return { x: b.left, y: b.top + b.height / 2 };
 }
 
-const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+let reducedMq: MediaQueryList | null = null, reducedFn: unknown; // cached per matchMedia function (null: none in this environment)
+const reducedMotion = () => {
+  const fn = typeof matchMedia === 'function' ? matchMedia : null;
+  if (fn !== reducedFn) { reducedFn = fn; reducedMq = fn ? fn('(prefers-reduced-motion: reduce)') : null; }
+  return !!reducedMq?.matches;
+};
+/** Set a style property only when its value changes (an unchanged render writes nothing). */
+const setProp = (el: HTMLElement, name: string, v: string) => { if (el.style.getPropertyValue(name) !== v) el.style.setProperty(name, v); };
 
 export const markerExtension: SceneExtension<Marker[]> = {
   name: 'marker',
@@ -53,11 +59,13 @@ export const markerExtension: SceneExtension<Marker[]> = {
     return out.length ? out : undefined;
   },
   render(root, markers, t) {
+    // all layout reads first, then the writes
     const rr = root.getBoundingClientRect(), ow = root.offsetWidth;
     if (!(ow > 0) || !(rr.width > 0)) return; // not laid out (hidden, detached): nothing to measure
     const k = rr.width / ow; // the canvas scale: measure in the scene's own CSS px
-    const reduced = reducedMotion();
-    for (const m of markers) {
+    // the offline render (a player with `render`) never settles, like the player's own reduced-motion check
+    const reduced = reducedMotion() && !root.closest('explainer-player')?.hasAttribute('render');
+    const planned = markers.map((m) => {
       const mw = m.el.offsetWidth, mh = m.el.offsetHeight; // the marker's own size, which transforms do not change
       const rects: Rect[] = m.stops.map((s) => {
         const pt = markerPoint(s.el.getBoundingClientRect(), s.point);
@@ -67,14 +75,16 @@ export const markerExtension: SceneExtension<Marker[]> = {
       let q = m.stops.map((s) => playerProgress({ segment: '', at: s.at, len: s.len, instant: getFlightEffect(s.fx).instant }, '', t));
       if (reduced) q = settleProgress(q);
       const box = chainBoxAt(chain, q, rects);
-      const st = m.el.style;
-      st.setProperty('transform', `translate(${r3(box.rect.x)}px,${r3(box.rect.y)}px) rotate(${r3(box.rot)}deg) scale(${r3(box.scale)})`);
-      st.setProperty('opacity', String(r3(box.visible ? box.opacity : 0)));
-      const arr = arrivalOf(chain, q, box);
+      return { m, box, arr: arrivalOf(chain, q, box) };
+    });
+    for (const { m, box, arr } of planned) {
+      setProp(m.el, 'transform', `translate(${r3(box.rect.x)}px,${r3(box.rect.y)}px) rotate(${r3(box.rot)}deg) scale(${r3(box.scale)})`);
+      setProp(m.el, 'opacity', String(r3(box.visible ? box.opacity : 0)));
       m.stops.forEach((s, i) => {
         // the property before the attribute, always: the serialised markup then does not depend on the order of earlier renders
-        if (arr.target === i) s.el.style.setProperty('--marker-p', String(r3(arr.p))); else s.el.style.removeProperty('--marker-p');
-        if (arr.here === i) s.el.setAttribute('data-marker-here', ''); else s.el.removeAttribute('data-marker-here');
+        if (arr.target === i) setProp(s.el, '--marker-p', String(r3(arr.p))); else if (s.el.style.getPropertyValue('--marker-p') !== '') s.el.style.removeProperty('--marker-p');
+        const here = s.el.hasAttribute('data-marker-here');
+        if (arr.here === i) { if (!here) s.el.setAttribute('data-marker-here', ''); } else if (here) s.el.removeAttribute('data-marker-here');
       });
     }
   },

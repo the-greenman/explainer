@@ -3,7 +3,9 @@
 // Each stop has a progress q: IDLE (not started) or 0..1+ once started (1 and over = finished). The object is placed by the LAST stop
 // in declared order that has started. It moves from where it was at the end of the previous stop (a finished or never started stop
 // counts as finished at its anchor; a stop still moving counts as where it is now, recursively) to this stop's anchor, with this
-// stop's effect. Stops that share a start position chain in declared order.
+// stop's effect. Interrupting a stop that is still moving: the new effect starts from the interrupted RECT, and its scale, opacity and
+// rotation are blended from the interrupted pose to the effect's own over the new stop's progress (v = prev * (1 - p) + cur * p), so
+// nothing jumps at the boundary and p = 1 is the effect's pose exactly. An 'enter' effect ignores what was before (it appears). Stops that share a start position chain in declared order.
 import { getFlightEffect } from './effect.ts';
 import { started, type ChainStop, type FlightBox, type Rect } from './types.ts';
 
@@ -27,9 +29,11 @@ function stopBox(stops: ChainStop[], q: number[], rects: Rect[], k: number): Fli
   const s = stops[k], to = rects[s.anchor] ?? zero, fx = getFlightEffect(s.fx);
   const x = started(q[k]) && !fx.instant ? q[k] : 1; // a stop that never started counts as finished (the object was carried past it)
   if (x >= 1) return restBox(to, s.anchor);
-  const from = fx.kind === 'enter' || k === 0 ? to : stopBox(stops, q, rects, k - 1).rect; // the first stop has nothing before it
-  const pose = fx.at(from, to, x);
-  return { visible: true, ...pose, restAnchor: null };
+  if (fx.kind === 'enter' || k === 0) return { visible: true, ...fx.at(to, to, x), restAnchor: null }; // the first stop has nothing before it
+  const prev = stopBox(stops, q, rects, k - 1), pose = fx.at(prev.rect, to, x);
+  if (prev.restAnchor != null) return { visible: true, ...pose, restAnchor: null }; // from rest: the effect's own pose
+  const mix = (a: number, b: number) => a * (1 - x) + b * x;
+  return { visible: true, ...pose, rot: mix(prev.rot, pose.rot), scale: mix(prev.scale, pose.scale), opacity: mix(prev.opacity, pose.opacity), restAnchor: null };
 }
 
 export const rectsClose = (a: Rect, b: Rect, tol = 1e-6) =>

@@ -65,3 +65,12 @@ test('an extension registered after a scene mounted is mounted into it at its ne
   scene.render(n, 0.2, { template: 'plain' }, {}, [], 10);
   assert.deepEqual([mounts, renders], [1, 2]);
 });
+
+test('rendering a node this scene never mounted does not throw and mounts no extension into it', () => {
+  const root = document.createElement('div');
+  root.innerHTML = '<h1 data-at="1" data-for="2" data-fx="fade">Hi</h1><p data-stamp>x</p>';
+  calls.length = 0;
+  assert.doesNotThrow(() => scene.render(root, 0.2, { template: 'x' }, {}, [], 10));
+  assert.deepEqual(calls, [], 'no extension mounted or rendered');
+  assert.equal(root.querySelector('p')!.getAttribute('data-stamp'), '', 'left alone');
+});
