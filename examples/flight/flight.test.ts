@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fallAt, flightBoxAt, flightStateAt, rectsClose, settledTime, type Stop } from './flight.ts';
+import { IDLE, chainBoxAt, fallAt, flightBoxAt, flightStateAt, homeVisibility, playerProgress, rectsClose, scrollProgress, scrollStop, settleProgress, settledTime, type ChainStop, type Stop } from './flight.ts';
 
 const R = [
   { x: 10, y: 10, w: 64, h: 64 }, // page header
@@ -99,4 +99,109 @@ test('a pure function of T: any order of calls, and shuffled stops, give the sam
 test('settledTime (reduced motion): only rest states', () => {
   for (const t of times) assert.notEqual(flightBoxAt(stops, R, S, settledTime(stops, S, t)).restAnchor, null);
   assert.equal(settledTime(popFirst, S, 1), 1);
+});
+
+// ---- chain: stops with different drivers, the last started stop places the object
+// anchors: 0 header, 1 part 1, 2 part 2, 3 part 2 (second), 4 part 3, 5 end
+const C = [0, 1, 2, 3, 4, 5].map((i) => ({ x: 10 + i * 100, y: 10 + i * 300, w: 50, h: 50 }));
+const chain: ChainStop[] = [
+  { anchor: 0, fx: 'cut' }, { anchor: 1, fx: 'fall' }, { anchor: 2, fx: 'glide' }, { anchor: 3, fx: 'glide' }, { anchor: 4, fx: 'fall' }, { anchor: 5, fx: 'glide' },
+];
+const key = (q: number[]) => JSON.stringify(chainBoxAt(chain, q, C));
+
+test('scrollProgress: 0 at the from bottom on the line, 1 at the to top on the line, linear between, a step for no gap', () => {
+  assert.equal(scrollProgress(400, 1200, 400), 0);
+  assert.equal(scrollProgress(0, 800, 400), 0.5);
+  assert.equal(scrollProgress(-400, 400, 400), 1);
+  assert.equal(scrollProgress(500, 1300, 400), 0);
+  assert.equal(scrollProgress(-900, 0, 400), 1);
+  assert.equal(scrollProgress(300, 300, 400), 1);
+  assert.equal(scrollProgress(500, 500, 400), 0);
+  assert.equal(scrollStop(0), IDLE);
+  assert.equal(scrollStop(0.25), 0.25);
+});
+
+test('playerProgress: idle in another segment or before at; 0..1 over len; 1 for cut and len 0', () => {
+  const s = { segment: 'a', at: 2, len: 2, fx: 'glide' as const };
+  assert.equal(playerProgress(s, 'b', 3), IDLE);
+  assert.equal(playerProgress(s, 'a', 1.9), IDLE);
+  assert.equal(playerProgress(s, 'a', 2), 0);
+  assert.equal(playerProgress(s, 'a', 3), 0.5);
+  assert.equal(playerProgress(s, 'a', 9), 1);
+  assert.equal(playerProgress({ ...s, fx: 'cut' }, 'a', 2), 1);
+  assert.equal(playerProgress({ ...s, len: 0 }, 'a', 2), 1);
+});
+
+test('chain: before any stop started the object rests at the first anchor (absent for a first pop)', () => {
+  const b = chainBoxAt(chain, chain.map(() => IDLE), C);
+  assert.equal(b.restAnchor, 0);
+  assert.deepEqual(b.rect, C[0]);
+  assert.equal(chainBoxAt([{ anchor: 1, fx: 'pop' }, { anchor: 2, fx: 'glide' }], [IDLE, IDLE], C).visible, false);
+});
+
+test('chain: the last started stop decides; rest at its anchor when finished', () => {
+  assert.equal(chainBoxAt(chain, [1, 1, 1, IDLE, IDLE, IDLE], C).restAnchor, 2);
+  assert.equal(chainBoxAt(chain, [1, 1, 1, 1, 1, 1], C).restAnchor, 5);
+  // a later stop starting wins even when an earlier one is still moving (the earlier one is just its starting point)
+  const b = chainBoxAt(chain, [1, 0.5, 0, IDLE, IDLE, IDLE], C);
+  assert.equal(b.restAnchor, null);
+  assert.ok(rectsClose(b.rect, chainBoxAt(chain, [1, 0.5, IDLE, IDLE, IDLE, IDLE], C).rect, 1e-9), 'continuous where stop 2 takes over from the moving stop 1');
+});
+
+test('chain: continuous where a stop starts and where it finishes', () => {
+  for (let k = 1; k < chain.length; k++) {
+    const done = chain.map((_, i) => (i < k ? 1 : IDLE));
+    const justBefore = chainBoxAt(chain, done, C).rect;
+    const startedZero = chainBoxAt(chain, done.map((x, i) => (i === k ? 0 : x)), C).rect;
+    assert.ok(rectsClose(justBefore, startedZero, 1e-9), `stop ${k} starts where the object was`);
+    const justUnder = chainBoxAt(chain, done.map((x, i) => (i === k ? 0.999999 : x)), C).rect;
+    assert.ok(rectsClose(justUnder, C[chain[k].anchor], 0.5), `stop ${k} ends at its anchor`);
+  }
+});
+
+test('chain: fast scroll. Stop 4 started while 3 never did: the object goes from stop 3\'s anchor to stop 4\'s, never stranded', () => {
+  const q = [1, 1, 1, IDLE, 0.5, IDLE]; // stops 2 done, 3 (player 2, time) never started, 4 half way
+  const b = chainBoxAt(chain, q, C);
+  assert.equal(b.visible, true);
+  const from = C[3], to = C[4];
+  assert.ok(b.rect.y > from.y && b.rect.y < to.y + 10, 'between the anchors of stop 3 and stop 4');
+  assert.deepEqual(chainBoxAt(chain, [1, 1, 1, IDLE, 1, IDLE], C).rect, C[4]);
+  // everything started or finished in any pattern gives a visible object
+  for (let m = 0; m < 64; m++) {
+    const qq = chain.map((_, i) => ((m >> i) & 1 ? 0.5 : IDLE));
+    const x = chainBoxAt(chain, qq, C);
+    assert.ok(x.visible && x.rect.w > 0, `pattern ${m}`);
+  }
+});
+
+test('chain: reverse. Progress going down undoes the moves exactly (a pure function of the values)', () => {
+  const path: number[][] = [];
+  for (let i = 0; i <= 20; i++) path.push([1, Math.min(1, i / 10), i > 10 ? (i - 10) / 10 : IDLE, IDLE, IDLE, IDLE]);
+  const fwd = path.map(key);
+  const back = [...path].reverse().map(key).reverse();
+  assert.deepEqual(back, fwd);
+});
+
+test('chain: order independence. Any order of evaluating, and the unrelated drivers\' values, give the same box', () => {
+  const states = Array.from({ length: 200 }, (_, n) => chain.map((_, i) => ((n * (i + 3)) % 7 < 3 ? IDLE : ((n * (i + 5)) % 11) / 10)));
+  const direct = states.map(key);
+  for (const i of states.map((_, n) => (n * 53) % states.length)) assert.equal(key(states[i]), direct[i]);
+  // once a later stop is finished, the progress of earlier ones no longer matters
+  const a = chainBoxAt(chain, [1, 0.3, 1, 1, IDLE, IDLE], C), b = chainBoxAt(chain, [1, 0.9, 1, 1, IDLE, IDLE], C);
+  assert.deepEqual(a, b);
+});
+
+test('chain: reduced motion settles started stops to rest', () => {
+  assert.deepEqual(settleProgress([1, 0.3, 0, IDLE]), [1, 1, 1, IDLE]);
+  for (let m = 0; m < 64; m++) {
+    const qq = chain.map((_, i) => ((m >> i) & 1 ? 0.5 : IDLE));
+    assert.notEqual(chainBoxAt(chain, settleProgress(qq), C).restAnchor, null);
+  }
+});
+
+test('stays: away from a home it hides but its stays parts show; at the home both are its own', () => {
+  assert.equal(homeVisibility('home', false), 'hidden');
+  assert.equal(homeVisibility('stays', false), 'visible');
+  assert.equal(homeVisibility('home', true), null);
+  assert.equal(homeVisibility('stays', true), null);
 });

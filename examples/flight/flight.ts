@@ -100,3 +100,61 @@ function boxAt(list: Stop[], rects: Rect[], T: number): FlightBox {
 
 export const rectsClose = (a: Rect, b: Rect, tol = 1e-6) =>
   [a.x - b.x, a.y - b.y, a.w - b.w, a.h - b.h].every((d) => Math.abs(num(d)) <= tol);
+
+// ---- Chain: several drivers (player clocks, scroll stretches), one object. Pure functions of per-stop progress values.
+// Each stop has progress q: IDLE (not started), or 0..1+ once started (1 and over = finished). The object is placed by the LAST
+// stop in declared order that has started. It moves from where it was at the end of the previous stop (a finished or never started
+// stop counts as finished at its anchor; a stop still moving counts as where it is now, recursively) to this stop's anchor.
+export const IDLE = -Infinity;
+export type ChainStop = { anchor: number; fx: Fx };
+export const started = (q: number | undefined) => q !== undefined && q >= 0;
+
+/** Progress of a player stop: IDLE while the player is in another segment or before `at`; otherwise (T - at) / len (1 when len is 0 or fx is cut). */
+export function playerProgress(s: { segment: string; at: number; len: number; fx: Fx }, segmentId: string, T: number): number {
+  if (s.segment !== segmentId || T < s.at) return IDLE;
+  return s.len > 0 && s.fx !== 'cut' ? Math.min(1, (T - s.at) / s.len) : 1;
+}
+
+/**
+ * Progress of a scroll stretch, from measured positions in viewport px: 0 when the bottom edge of the `from` element is at `line`,
+ * 1 when the top edge of the `to` element is at `line` (the gap between the two parts scrolling past `line`, the viewport middle in the
+ * element). Clamped to 0..1; the stretch counts as started when it is above 0 (see `scrollStop`). Overlapping or touching parts (gap <= 0) are a step.
+ */
+export function scrollProgress(fromBottom: number, toTop: number, line: number): number {
+  const gap = toTop - fromBottom;
+  if (!(gap > 0)) return line >= fromBottom ? 1 : 0;
+  return Math.min(1, Math.max(0, (line - fromBottom) / gap));
+}
+/** A scroll stretch starts when its progress passes 0 (so at progress exactly 0 it has not started and the earlier stop still places the object). */
+export const scrollStop = (q: number): number => (q > 0 ? q : IDLE);
+/** Reduced motion: every started stop is finished, so only rest states are shown. */
+export const settleProgress = (q: number[]): number[] => q.map((x) => (started(x) ? 1 : IDLE));
+
+/** Where the object is, given the progress of every stop (declared order) and the anchor rects. A pure function of its arguments. */
+export function chainBoxAt(stops: ChainStop[], q: number[], rects: Rect[]): FlightBox {
+  const at = (i: number) => rects[i] ?? zero;
+  if (!stops.length) return { visible: false, rect: zero, rot: 0, scale: 1, opacity: 1, restAnchor: null };
+  let k = -1;
+  for (let i = 0; i < stops.length; i++) if (started(q[i])) k = i;
+  if (k < 0) return stops[0].fx === 'pop' ? { visible: false, rect: at(stops[0].anchor), rot: 0, scale: 0, opacity: 0, restAnchor: null } : restBox(at(stops[0].anchor), stops[0].anchor);
+  return chainStopBox(stops, q, rects, k);
+}
+
+const restBox = (rect: Rect, anchor: number): FlightBox => ({ visible: true, rect, rot: 0, scale: 1, opacity: 1, restAnchor: anchor });
+
+function chainStopBox(stops: ChainStop[], q: number[], rects: Rect[], k: number): FlightBox {
+  const s = stops[k], to = rects[s.anchor] ?? zero;
+  const x = started(q[k]) && s.fx !== 'cut' ? q[k] : 1; // a stop that never started counts as finished (the object was carried past it)
+  if (x >= 1) return restBox(to, s.anchor);
+  if (s.fx === 'pop') return { visible: true, rect: to, rot: 0, scale: Math.max(0, outBack(x)), opacity: Math.min(1, x / POP_FADE), restAnchor: null };
+  const from = k === 0 ? to : chainStopBox(stops, q, rects, k - 1).rect;
+  const moving = { visible: true, scale: 1, opacity: 1, restAnchor: null };
+  if (s.fx === 'fall') { const f = fallAt(from, to, x); return { ...moving, rect: f.rect, rot: f.rot }; }
+  return { ...moving, rect: lerpRect(from, to, inOut(x)), rot: 0 };
+}
+
+/** The visibility a home element, or a `data-flight-stays` descendant of one, should have: `null` = its own (restore), else the inline value. */
+export function homeVisibility(role: 'home' | 'stays', objectHere: boolean): 'hidden' | 'visible' | null {
+  if (objectHere) return null;
+  return role === 'home' ? 'hidden' : 'visible';
+}

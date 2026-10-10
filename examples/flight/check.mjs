@@ -20,7 +20,7 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(m.text()); });
 await page.goto(BASE);
-await page.waitForFunction(() => document.querySelectorAll('[data-flight-layer]').length === 2 && document.querySelector('#p1').clock && document.querySelector('#p2').clock);
+await page.waitForFunction(() => document.querySelectorAll('[data-flight-layer]').length === 3 && document.querySelector('#p1').clock && document.querySelector('#p2').clock && document.querySelector('#p3').clock);
 
 const cfg = [
   { n: 1, p: '#p1', home: ['#logo1'], layer: 0 },
@@ -97,6 +97,38 @@ await page.screenshot({ path: join(SHOTS, 'p2-mid-flight-9.5.png') });
 r = await at(cfg[1], 10);
 ok(!r.flier && r.homes[1] === 'visible' && r.homes[0] === 'hidden', 'p2 t=10: landed: the landing home is visible, the header logo hidden');
 
+
+// ---- demo 3: a piece stays behind (home inside a scene template; the ring is data-flight-stays)
+const d3 = (t) => page.evaluate(async (t) => {
+  const p = document.querySelector('#p3'); p.scrollIntoView({ block: 'start' }); p.seek(t);
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const vis = (s) => getComputedStyle(document.querySelector(s)).visibility;
+  const fl = document.querySelectorAll('[data-flight-layer]')[2].firstChild;
+  const b = fl.getBoundingClientRect(), on = getComputedStyle(fl).display !== 'none';
+  const rc = (s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+  return { on, flier: on ? { x: b.left, y: b.top, w: b.width, h: b.height } : null, circles: fl.querySelectorAll('circle').length, clonedIds: fl.querySelectorAll('[id]').length,
+    logo: vis('#logo3'), ring: vis('#logo3 [data-flight-stays]'), landRing: vis('#land3 [data-flight-stays]'), land: vis('#land3'), landDot: vis('#land3 circle:not([data-flight-stays])'),
+    landRect: rc('#land3'), sceneRect: rc('#logo3'), aria: fl.parentElement.getAttribute('aria-hidden') };
+}, t);
+let e = await d3(3);
+ok(!e.on && e.logo === 'visible' && e.ring === 'visible' && e.land === 'hidden' && e.landRing === 'visible', `demo 3 t=3: whole logo in the scene, no flier, page home hidden but its ring shows (${JSON.stringify({ logo: e.logo, ring: e.ring, land: e.land, landRing: e.landRing })})`);
+e = await d3(6.7);
+ok(e.on && e.circles === 1 && e.clonedIds === 0 && e.logo === 'hidden' && e.ring === 'visible' && e.landRing === 'visible', `demo 3 t=6.7: dot flies (flier has ${e.circles} circle, no ids), scene logo hidden, ring still visible in the scene`);
+ok(e.aria === 'true', 'the flier layer is aria-hidden');
+const mid3 = e.flier;
+e = await d3(6);
+ok(e.on && rectNear(e.flier, e.sceneRect, 1), 'demo 3 t=6: the flier starts exactly on the scene logo');
+e = await d3(8.4);
+ok(!e.on && e.logo === 'hidden' && e.ring === 'visible' && e.land === 'visible' && e.landDot === 'visible', 'demo 3 t=8.4: landed: page home shows (dot and ring), no flier, scene keeps only the ring');
+// scene logo opacity (data-fx fade) does not leak into the flier
+await d3(6.7);
+const leak = await page.evaluate(() => document.querySelectorAll('[data-flight-layer]')[2].firstChild.querySelector('svg').getAttribute('style'));
+ok(!/opacity|--fx-p|clip-path/.test(leak), `demo 3: the flier clone carries no scene choreography styles (${leak})`);
+const strip = [];
+for (const t of [5.9, 6.3, 6.7, 7.1, 7.5, 8.1]) { await d3(t); const f = join(SHOTS, `d3-${t}.png`); await page.locator('#p3').locator('xpath=ancestor::section').screenshot({ path: f }); strip.push(f); }
+await d3(0); // reset
+void mid3;
+
 // ---- scroll during a flight
 await page.evaluate(() => scrollTo(0, 0));
 r = await at(cfg[1], 9.5, true);
@@ -130,7 +162,7 @@ ok(rev.t < 9.8 && rev.on && rev.style === again.style, `reverse play from 9.8 re
 
 // ---- paint cost while playing (rAF-driven explainer:time), both flights
 const cost = await page.evaluate(async () => {
-  const fl = [...document.querySelectorAll('explainer-flight')];
+  const fl = [...document.querySelectorAll('explainer-flight')].slice(0, 2);
   fl.forEach((f) => { f.stats = { paints: 0, ms: 0, max: 0 }; });
   document.querySelector('#p1').seek(0); document.querySelector('#p2').seek(0);
   document.querySelector('#p1').setRate(1); document.querySelector('#p2').setRate(1); document.querySelector('#p1').play(); document.querySelector('#p2').play();
@@ -145,7 +177,7 @@ ok(cost.every((c) => c.paints > 30 && c.avgMs < 1), 'paint cost under 1 ms avera
 const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 }, reducedMotion: 'reduce' });
 const rp = await ctx.newPage();
 await rp.goto(BASE);
-await rp.waitForFunction(() => document.querySelectorAll('[data-flight-layer]').length === 2 && document.querySelector('#p2').clock);
+await rp.waitForFunction(() => document.querySelectorAll('[data-flight-layer]').length === 3 && document.querySelector('#p2').clock);
 const red = [];
 for (const t of [0.6, 0.9, 1.2, 9.2, 9.5]) {
   red.push(await rp.evaluate(async (t) => {
@@ -165,10 +197,10 @@ await rpage.goto(BASE + '?render');
 await rpage.waitForTimeout(800);
 const rend = await rpage.evaluate(() => ({
   layers: document.querySelectorAll('[data-flight-layer]').length,
-  styles: ['#logo1', '#logo2', '#land2'].map((s) => document.querySelector(s).getAttribute('style')),
+  styles: ['#logo1', '#logo2', '#land2', '#logo3', '#land3', '#land3 [data-flight-stays]', '#logo3 [data-flight-stays]'].map((s) => document.querySelector(s)?.getAttribute('style') ?? null),
   attr: document.querySelector('#p1').hasAttribute('render'),
 }));
-ok(rend.attr && rend.layers === 0 && rend.styles.every((s) => !s), `render attribute: no flight layer, homes untouched (${JSON.stringify(rend)})`);
+ok(rend.attr && rend.layers === 0 && rend.styles.every((s) => !/visibility/.test(s ?? '')), `render attribute: no flight layer, homes untouched: no inline visibility; #logo3's own opacity is the scene's data-fx (${JSON.stringify(rend)})`);
 
 console.log(errors.length ? 'console errors/warnings:\n  ' + errors.join('\n  ') : 'no console errors');
 await browser.close();

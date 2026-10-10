@@ -102,6 +102,38 @@
 </script></explainer-flight>
 </section>
 
+<section class="demo">
+<h2>A piece stays behind</h2>
+<p>A logo (a ring and a dot) fades in inside the video. At 6 s the dot falls out onto the page block below; the ring is marked <code>data-flight-stays</code> and stays in the video. The page block shows an empty ring until the dot lands in it. The logo in the scene is the object and its home at rest. With <code>?render</code>, or in a rendered video, nothing flies and the scene logo stays whole.</p>
+<explainer-player id="p3" canvas="1280x720">
+  <template data-scene="logo"><section class="scene">
+    <h1 data-at="0.3" data-for="1" data-fx="write">Something falls out</h1>
+    <p data-at="1.2" data-for="0.6" data-fx="fade">The ring stays here.</p>
+    <svg id="logo3" class="scene-logo" data-flight-home data-at="0.8" data-for="0.8" data-fx="fade" viewBox="0 0 64 64" role="img" aria-label="Logo"><circle data-flight-stays cx="32" cy="32" r="27" fill="none" stroke="#2f7d62" stroke-width="6"/><circle cx="32" cy="32" r="11" fill="#2f7d62"/></svg>
+  </section></template>
+  <script type="application/json" data-manifest>
+  { "id": "flight-3", "segments": [{ "id": "s3", "kind": "none", "out": 10 }],
+    "cues": [ { "id": "logo", "segment": "s3", "start": 0, "end": 10, "renders": "com.semanticops.explainer/scene@1", "data": { "template": "logo" } } ] }
+  </script>
+</explainer-player>
+<div class="bar">
+  <button data-explainer-action="play" data-explainer-target="#p3">Play</button>
+  <button data-explainer-action="pause" data-explainer-target="#p3">Pause</button>
+  <button data-explainer-action="rate" data-explainer-value="-1" data-explainer-target="#p3">Reverse</button>
+  <input type="range" min="0" max="10" step="0.01" value="0" data-explainer-action="seek" data-explainer-target="#p3" aria-label="Scrub">
+</div>
+<div class="block footer"><span>Section below: the dot lands in the ring.</span>
+  <svg id="land3" class="logo" data-flight-home viewBox="0 0 64 64" role="img" aria-label="Logo"><circle data-flight-stays cx="32" cy="32" r="27" fill="none" stroke="#2f7d62" stroke-width="6"/><circle cx="32" cy="32" r="11" fill="#2f7d62"/></svg>
+</div>
+<!-- the object is the logo inside the scene (its markup is only in the template until the scene mounts; the element finds it either way) -->
+<explainer-flight for="#p3"><script type="application/json">
+{ "object": "#logo3",
+  "anchors": [ { "selector": "#logo3" }, { "selector": "#land3" } ],
+  "stops": [ { "segment": "s3", "at": 0, "anchor": 0, "fx": "cut" }, { "segment": "s3", "at": 6, "for": 1.4, "anchor": 1, "fx": "fall" } ] }
+</script></explainer-flight>
+</section>
+
+<p>More: <a href="guide.html">one logo carried through three parts of a page by scroll and by each part's clock</a>.</p>
 <div style="height:60vh"></div>
 
 <script>

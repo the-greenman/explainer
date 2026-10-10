@@ -8,3 +8,5 @@
 .scene .anchor { position: absolute; width: 96px; height: 96px; }
 .scene .anchor.br { right: 40px; bottom: 40px; }
 .scene .anchor.bl { left: 40px; bottom: 40px; }
+/* demo 3: the logo inside a scene. It is the object, so it carries presentation attributes only: the flier is a clone outside the scene's CSS. */
+.scene .scene-logo { position: absolute; right: 140px; top: 50%; width: 180px; height: 180px; margin-top: -90px; }
