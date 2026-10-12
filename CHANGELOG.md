@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Experimental
+- flight: docking. At rest on an anchor without `data-flight-home` the object is an `aria-hidden` clone (`data-flight-dock`) inside the page and the fixed flier hides, so a scroll moves it natively (the flier used to bounce). Canvas anchors dock in `[data-canvas]`.
+- flight: triggered stops, `{ "on": { "name" | "enter" | "var" } }`, with a pure latch clock (`latchSet`, `latchProgress`), the methods `go` / `back` / `toggle` and `data-flight-action` buttons. New demo `examples/flight/takeoff.html`.
+
 ## [0.4.0] - 2026-10-10
 
 ### Added

@@ -37,18 +37,20 @@ const at = (c, t, scroll = false) => page.evaluate(async ({ c, t, scroll }) => {
   document.querySelectorAll('explainer-flight').forEach((f) => f.flush()); // paints are batched per frame; flush so the read is of the settled state
   const flier = document.querySelectorAll('[data-flight-layer]')[c.layer].firstChild;
   const rc = (el) => { const b = el.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; };
+  // a plain rest anchor shows a dock (a clone inside the page) instead of the fixed flier: either counts as "the object is drawn"
+  const dock = [...(document.querySelectorAll('explainer-flight')[c.layer].docks?.values() ?? [])].map((d) => d.el).find((e) => getComputedStyle(e).display !== 'none');
   const on = getComputedStyle(flier).display !== 'none';
   const stage = p.querySelector('[data-canvas]').parentElement.getBoundingClientRect();
   const cv = p.querySelector('[data-canvas]').getBoundingClientRect(), sc = cv.width / 1280;
   return {
-    t: p.clock.t, flier: on ? rc(flier) : null, style: flier.getAttribute('data-s') ?? '', op: on ? getComputedStyle(flier).opacity : null,
+    t: p.clock.t, flier: on ? rc(flier) : dock ? rc(dock) : null, docked: !!dock, style: flier.getAttribute('data-s') ?? '', op: on ? getComputedStyle(flier).opacity : null,
     homes: c.home.map((h) => getComputedStyle(document.querySelector(h)).visibility),
     stage: { x: stage.left, y: stage.top, w: stage.width, h: stage.height },
     canvasBR: { x: cv.left + 1136 * sc, y: cv.top + 576 * sc, w: 96 * sc, h: 96 * sc },
     homeRects: c.home.map((h) => rc(document.querySelector(h))),
   };
 }, { c, t, scroll });
-const sig = (r) => JSON.stringify([r.flier, r.homes, r.style]);
+const sig = (r) => JSON.stringify([r.flier && Object.values(r.flier).map((v) => Math.round(v)), r.homes, r.style]); // a dock is placed to within 0.5 px, so compare to the pixel
 
 // ---- order independence
 const times = [0, 0.4, 0.9, 1.3, 2.5, 4.9, 5.4, 6.1, 6.3, 7, 8.2, 8.7, 9.2, 9.7, 10];
@@ -199,7 +201,7 @@ const lag = await page.evaluate(async () => {
   const layer = [...document.querySelectorAll('[data-flight-layer]')].pop();
   // sample at the end of every frame (a task posted from a rAF callback runs after all of that frame's callbacks): the state a frame shows
   let run = true;
-  const sample = () => { if (!run) return; requestAnimationFrame(() => setTimeout(() => { px.push(probe.getBoundingClientRect().left - layer.firstChild.getBoundingClientRect().left); sample(); }, 0)); };
+  const sample = () => { if (!run) return; requestAnimationFrame(() => setTimeout(() => { px.push(probe.getBoundingClientRect().left - (probe.querySelector('[data-flight-dock]') ?? layer.firstChild).getBoundingClientRect().left); sample(); }, 0)); };
   const flush = fl.flush.bind(fl);
   fl.flush = () => { const before = fl.stats.paints; flush(); if (fl.stats.paints > before) frames.push(document.timeline.currentTime - Number(probe.dataset.f)); };
   p.seek(0); p.setRate(1); p.play(); sample();
@@ -212,7 +214,7 @@ const lag = await page.evaluate(async () => {
   return out;
 });
 console.log('   one-frame lag (probe moving 300 px/s inside p2):', JSON.stringify(lag));
-ok(lag.n > 30 && lag.maxPx < 12, `the flier trails a moving anchor by at most ${lag.maxPx?.toFixed(1)} px (mean ${lag.meanPx?.toFixed(1)} px); its paint runs ${lag.meanFrameMs?.toFixed(1)} ms after the event that caused it`);
+ok(lag.n > 30 && lag.maxPx < 12, `the object (docked in the moving anchor) trails it by at most ${lag.maxPx?.toFixed(1)} px (mean ${lag.meanPx?.toFixed(1)} px); its paint runs ${lag.meanFrameMs?.toFixed(1)} ms after the event that caused it`);
 
 // ---- reduced motion: no in-between frames
 const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 }, reducedMotion: 'reduce' });
@@ -226,7 +228,8 @@ for (const t of [0.6, 0.9, 1.2, 9.2, 9.5]) {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   document.querySelectorAll('explainer-flight').forEach((f) => f.flush()); // paints are batched per frame; flush so the read is of the settled state
     const f = document.querySelectorAll('[data-flight-layer]')[1].firstChild;
-    return { t, on: getComputedStyle(f).display !== 'none', land: getComputedStyle(document.querySelector('#land2')).visibility };
+    const dock = [...document.querySelectorAll('explainer-flight')[1].docks.values()].some((d) => getComputedStyle(d.el).display !== 'none');
+    return { t, on: getComputedStyle(f).display !== 'none' || dock, land: getComputedStyle(document.querySelector('#land2')).visibility };
   }, t));
 }
 console.log('   reduced motion:', JSON.stringify(red));

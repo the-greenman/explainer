@@ -6,7 +6,7 @@ export { registerFlightEffects, flightEffects, getFlightEffect, listFlightEffect
 export { builtInEffects, registerBuiltInEffects } from './effects/index.ts';
 export { effectProblems } from './contract.ts';
 export { chainBoxAt, rectsClose } from './chain.ts';
-export { playerProgress, gatePlayerProgress, scrollProgress, scrollStop, settleProgress, type PlayerView } from './drivers.ts';
+export { playerProgress, gatePlayerProgress, scrollProgress, scrollStop, settleProgress, latchProgress, latchSet, type PlayerView, type Latch } from './drivers.ts';
 export { homeVisibility, toDocRect, fromDocRect } from './homes.ts';
 export { arrivalOf, type Arrival } from './arrival.ts';
 export { phraseTimes, type PhraseOptions } from './phrases.ts';

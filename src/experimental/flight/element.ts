@@ -4,18 +4,25 @@
 import { r3 } from '../../num.ts';
 import { arrivalOf } from './arrival.ts';
 import { chainBoxAt } from './chain.ts';
-import { gatePlayerProgress, playerProgress, scrollProgress, scrollStop, settleProgress } from './drivers.ts';
+import { scopeFor, gate } from '../../store.ts';
+import { bindEnter } from '../../triggers.ts';
+import { gatePlayerProgress, latchProgress, latchSet, playerProgress, scrollProgress, scrollStop, settleProgress, type Latch } from './drivers.ts';
 import { getFlightEffect } from './effect.ts';
 import { fromDocRect, homeVisibility, toDocRect } from './homes.ts';
-import { IDLE, type ChainStop, type Rect } from './types.ts';
+import { IDLE, started, type ChainStop, type Rect } from './types.ts';
 
 type AnchorCfg = { selector: string } | { canvas: [number, number, number, number] };
-/** A stop is driven by a player's time (`player` defaults to the element's `for`) or by a scroll stretch (`scroll`). */
-type StopCfg = { player?: string; segment?: string; at?: number; for?: number; scroll?: { from: string; to: string }; anchor: number; fx?: string };
+/** A stop is driven by a player's time (`player` defaults to the element's `for`), by a scroll stretch (`scroll`) or by a trigger (`on`: a named method/button, an element entering view, a store variable; `for` is its length in seconds). */
+type StopCfg = { player?: string; segment?: string; at?: number; for?: number; scroll?: { from: string; to: string }; on?: { name?: string; enter?: string; var?: string; value?: string }; anchor: number; fx?: string };
 type Cfg = { object: string; anchors: AnchorCfg[]; stops: StopCfg[] };
-type Driver = { kind: 'player'; player: Element; segment: string; at: number; len: number } | { kind: 'scroll'; from: string; to: string };
+type Driver = { kind: 'player'; player: Element; segment: string; at: number; len: number } | { kind: 'scroll'; from: string; to: string } | { kind: 'trigger'; len: number };
 type Clk = { segmentId: string; t: number };
 type Measured = { rect: Rect; els: Element[]; el: Element | null }; // el: the matched element that gave the rect (null for a canvas anchor or a hidden one)
+/** A dock: the flier's clone shown inside the page at a plain rest anchor. `dx`,`dy`,`w`,`h`: what its style says now, in its own px (a selector dock is placed by a translate). */
+type Dock = { el: HTMLElement; host: Element; dx: number; dy: number; w: number; h: number };
+const NO_CHILDREN = new Set(['img', 'input', 'video', 'audio', 'canvas', 'iframe', 'br', 'hr', 'embed', 'object', 'textarea', 'select']);
+const OWN_CLONES = '[data-flight-dock],[data-flight-layer]';
+const DOCK_STYLE ='position:absolute;margin:0;padding:0;pointer-events:none;box-sizing:border-box;';
 
 const LAYER_STYLE = 'position:fixed;inset:0;pointer-events:none;z-index:2147483000;overflow:visible';
 const ZERO: Rect = { x: 0, y: 0, w: 0, h: 0 };
@@ -32,6 +39,11 @@ export class ExplainerFlight extends HTMLElement {
   private canvasPlayer: Element | null = null; // canvas anchors are in the design canvas of the `for` player (else the first referenced)
   private layer: HTMLElement | null = null;
   private flier: HTMLElement | null = null;
+  private tpl: Element | null = null; // the cleaned clone of the object (see cloneObject): the flier and every dock hold a copy
+  private docks = new Map<number, Dock>(); // anchor index -> the dock at that anchor (a plain anchor rests natively, see `dock`)
+  private latches: (Latch | null)[] = []; // per stop index: the trigger stops' clocks
+  private moving = false; // some trigger latch is between its ends: keep painting
+  private warnedEnter = new Set<string>();
   private touched = new Map<Element, string>(); // element -> its inline visibility before we touched it
   private hereEl: Element | null = null; // carries data-flight-here
   private targetEl: Element | null = null; // carries --flight-p
@@ -55,10 +67,10 @@ export class ExplainerFlight extends HTMLElement {
     const dflt = this.getAttribute('for');
     const ps = new Map<string, Element>();
     for (const s of this.cfg.stops) {
-      const sel = s.scroll ? null : s.player ?? dflt;
+      const sel = s.scroll || s.on ? null : s.player ?? dflt;
       if (sel && !ps.has(sel)) { const el = document.querySelector(sel); if (el) ps.set(sel, el); }
     }
-    this.drivers = this.cfg.stops.map((s): Driver => s.scroll ? { kind: 'scroll', ...s.scroll } : { kind: 'player', player: ps.get(s.player ?? dflt ?? '') as Element, segment: s.segment ?? '', at: s.at ?? 0, len: s.for ?? 0 });
+    this.drivers = this.cfg.stops.map((s): Driver => s.scroll ? { kind: 'scroll', ...s.scroll } : s.on ? { kind: 'trigger', len: s.for ?? 0 } : { kind: 'player', player: ps.get(s.player ?? dflt ?? '') as Element, segment: s.segment ?? '', at: s.at ?? 0, len: s.for ?? 0 });
     if (this.drivers.some((d) => d.kind === 'player' && !d.player)) { console.warn('<explainer-flight>: player not found'); return; }
     this.players = [...new Set(this.drivers.flatMap((d) => (d.kind === 'player' ? [d.player] : [])))];
     // canvas anchors are in the `for` player's canvas even when no stop names it (`ps` only holds the players some stop names)
@@ -68,6 +80,7 @@ export class ExplainerFlight extends HTMLElement {
     if (this.players.some((p) => p.hasAttribute('render'))) return;
     this.chain = this.cfg.stops.map((s) => ({ anchor: s.anchor, fx: s.fx ?? 'cut' }));
     this.lastGood = this.cfg.anchors.map(() => null);
+    this.latches = this.cfg.stops.map(() => null);
 
     this.layer = document.createElement('div');
     this.layer.setAttribute('style', LAYER_STYLE);
@@ -105,6 +118,7 @@ export class ExplainerFlight extends HTMLElement {
     (document as any).fonts?.ready?.then(again);
     this.cleanup.push(() => mq.removeEventListener('change', onMq), () => removeEventListener('scroll', again, { capture: true }), () => removeEventListener('resize', again), () => removeEventListener('load', again),
       () => { this.ro?.disconnect(); this.ro = null; this.observed.clear(); });
+    this.bindTriggers();
     this.paint(); // the first paint is not deferred
   }
 
@@ -118,8 +132,11 @@ export class ExplainerFlight extends HTMLElement {
     this.mark(null, null, 0);
     for (const e of this.addedHome) e.removeAttribute('data-flight-home');
     this.addedHome.clear();
+    for (const d of this.docks.values()) d.el.remove();
+    this.docks.clear();
     this.layer?.remove();
-    this.layer = this.flier = null;
+    this.layer = this.flier = this.tpl = null;
+    this.latches = [];
     this.clocks.clear();
   }
 
@@ -143,15 +160,59 @@ export class ExplainerFlight extends HTMLElement {
     this.ro.observe(el);
   }
 
-  /** The flier: a clone of the object without ids, home marks and `data-flight-stays` parts (those stay behind). Built once, from the first match. */
-  private buildFlier(src: Element) {
+  /** A clone of the object without ids, home marks and `data-flight-stays` parts (those stay behind), sized to fill its box. The flier and the docks are made from it. */
+  private cloneObject(src: Element): Element {
     const clone = src.cloneNode(true) as SVGElement | HTMLElement;
     for (const e of Array.from(clone.querySelectorAll('[data-flight-stays]'))) e.remove();
     for (const e of [clone, ...Array.from(clone.querySelectorAll('*'))]) { e.removeAttribute('id'); e.removeAttribute('data-flight-home'); e.removeAttribute('data-flight-stays'); }
     clone.removeAttribute('style'); // scene choreography may have set opacity, clip-path or --fx-p on a live element
     clone.setAttribute('style', 'width:100%;height:100%;margin:0;display:block;visibility:visible');
-    this.flier!.append(clone);
+    return clone;
   }
+
+  /** The flier: built once, from the first match. */
+  private buildFlier(src: Element) {
+    this.tpl = this.cloneObject(src);
+    this.flier!.append(this.tpl.cloneNode(true));
+  }
+
+  /** Trigger stops: the three sources only call `setTrigger`. Not bound in the render mode (connect returns before this). */
+  private bindTriggers() {
+    this.cfg.stops.forEach((s, i) => {
+      const on = s.on;
+      if (!on) return;
+      if (on.enter) {
+        const el = document.querySelector(on.enter);
+        if (el) this.cleanup.push(bindEnter(el, { forward: () => this.setTrigger(i, true), reverse: () => this.setTrigger(i, false), pause: () => {} }));
+        else if (!this.warnedEnter.has(on.enter)) { this.warnedEnter.add(on.enter); console.warn(`<explainer-flight>: trigger element "${on.enter}" not found`); }
+      }
+      if (on.var) {
+        const store = scopeFor(this), cond = { when_var: on.var, when_value: on.value };
+        this.setTrigger(i, gate(cond, store.all()), true); // already true at load: finished, not animated
+        this.cleanup.push(store.subscribe(() => this.setTrigger(i, gate(cond, store.all()))));
+      }
+    });
+  }
+
+  /** Switch trigger stop i on or off now (`settled`: as if it had been so long ago). Only a change repaints. */
+  private setTrigger(i: number, on: boolean, settled = false) {
+    if (!this.flier) return;
+    const d = this.drivers[i], len = d?.kind === 'trigger' ? d.len : 0, now = performance.now() / 1000;
+    const next = latchSet(this.latches[i], on, settled ? now - len : now, len);
+    if (next === this.latches[i]) return;
+    this.latches[i] = next;
+    this.invalidate();
+  }
+
+  private named(name: string, f: (i: number) => void) {
+    this.cfg?.stops.forEach((s, i) => { if (s.on?.name === name) f(i); });
+  }
+  /** Take off: switch on every stop whose `on.name` is `name`. */
+  go(name: string) { this.named(name, (i) => this.setTrigger(i, true)); }
+  /** Switch the named stops off (the reverse flight). */
+  back(name: string) { this.named(name, (i) => this.setTrigger(i, false)); }
+  /** `go` for a stop that is off, `back` for one that is on or going on. */
+  toggle(name: string) { this.named(name, (i) => this.setTrigger(i, this.latches[i]?.dir !== 1)); }
 
   /** Set an element's inline visibility, remembering what it was; `null` puts it back. */
   private vis(el: Element, want: string | null) {
@@ -185,8 +246,14 @@ export class ExplainerFlight extends HTMLElement {
 
   /** Progress of every stop from its own driver: a player's latest clock (gated, see `gatePlayerProgress`), or the scroll stretch measured now. */
   private progress(all: (sel: string) => Element[]): number[] {
-    const line = innerHeight / 2;
+    const line = innerHeight / 2, now = performance.now() / 1000; // trigger latches count in seconds
+    this.moving = false;
     return this.drivers.map((d, i) => {
+      if (d.kind === 'trigger') {
+        const q = latchProgress(this.latches[i], now, getFlightEffect(this.chain[i].fx).instant ? 0 : d.len);
+        if (started(q) && q < 1) this.moving = true;
+        return q;
+      }
       if (d.kind === 'player') {
         const c = this.clocks.get(d.player);
         if (!c) return IDLE;
@@ -211,17 +278,52 @@ export class ExplainerFlight extends HTMLElement {
     if (target) { const v = String(r3(p)); const st = (target as HTMLElement).style; if (st.getPropertyValue('--flight-p') !== v) st.setProperty('--flight-p', v); }
   }
 
+  /**
+   * Dock: at a plain rest anchor the object is a clone inside the page, so the browser scrolls it with the page (the fixed flier would trail the
+   * compositor by a frame and bounce). Returns the shown dock, or null when there is none (no clone yet, the anchor has no box): the flier shows.
+   * A selector dock is the last child of the anchor (else a following sibling) and placed by a translate computed from where the browser has put
+   * its origin, so a scroll changes nothing and writes nothing. A canvas dock sits in `[data-canvas]` in design px. The anchor itself is never touched.
+   */
+  private dock(i: number, host: Element | null, rect: Rect, design: [number, number, number, number] | null): HTMLElement | null {
+    if (!host || !this.tpl || rect.w <= 0 || rect.h <= 0) return null;
+    let d = this.docks.get(i);
+    if (d && (d.host !== host || !d.el.isConnected)) { d.el.remove(); this.docks.delete(i); d = undefined; }
+    if (!d) {
+      const el = document.createElement('div');
+      el.setAttribute('data-flight-dock', ''); el.setAttribute('aria-hidden', 'true');
+      el.append(this.tpl.cloneNode(true));
+      if (!design && host instanceof HTMLElement && !NO_CHILDREN.has(host.localName)) host.append(el); else if (design) host.append(el); else host.after(el);
+      this.docks.set(i, (d = { el, host, dx: 0, dy: 0, w: NaN, h: NaN }));
+    }
+    const e = d.el, w = r3(design ? design[2] : rect.w), h = r3(design ? design[3] : rect.h);
+    if (design) {
+      const st = `display:block;${DOCK_STYLE}left:${r3(design[0])}px;top:${r3(design[1])}px;width:${w}px;height:${h}px`;
+      if (e.getAttribute('style') !== st) e.setAttribute('style', st);
+      return e;
+    }
+    const put = () => e.setAttribute('style', `display:block;${DOCK_STYLE}left:0;top:0;width:${d!.w}px;height:${d!.h}px;transform:translate(${d!.dx}px,${d!.dy}px)`);
+    if (isNaN(d.w)) { d.w = w; d.h = h; put(); } // first time: placed at its origin, measured below
+    else if (e.style.display !== 'block') e.style.display = 'block'; // it has no box to measure while display:none
+    // dock sizes and translates are in the dock's own px: an ancestor's scale (a design canvas) shows as rendered size / own size
+    const b = e.getBoundingClientRect(), sx = d.w > 0 && b.width > 0 ? b.width / d.w : 1, sy = d.h > 0 && b.height > 0 ? b.height / d.h : 1;
+    const dx = (rect.x - (b.left - d.dx * sx)) / sx, dy = (rect.y - (b.top - d.dy * sy)) / sy; // origin = where the browser puts it with no translate; a scroll does not change it
+    const nw = rect.w / sx, nh = rect.h / sy;
+    if (Math.abs(nw - d.w) * sx >= 0.5 || Math.abs(nh - d.h) * sy >= 0.5 || Math.abs(dx - d.dx) * sx >= 0.5 || Math.abs(dy - d.dy) * sy >= 0.5) { d.w = r3(nw); d.h = r3(nh); d.dx = r3(dx); d.dy = r3(dy); put(); }
+    return e;
+  }
+
   private paint() {
     if (!this.flier) return;
     const t0 = performance.now();
     const memo = new Map<string, Element[]>(); // one DOM query per selector per paint
-    const all = (sel: string) => { let r = memo.get(sel); if (!r) memo.set(sel, (r = Array.from(document.querySelectorAll(sel)))); return r; };
-    let cv: { b: DOMRect; dw: number } | null | undefined;
+    // the flier and the docks are clones that keep their classes: a class selector must never match them
+    const all = (sel: string) => { let r = memo.get(sel); if (!r) memo.set(sel, (r = Array.from(document.querySelectorAll(sel)).filter((e) => !e.closest(OWN_CLONES)))); return r; };
+    let cv: { b: DOMRect; dw: number; el: HTMLElement } | null | undefined;
     const canvas = () => {
       if (cv !== undefined) return cv;
       const el = this.canvasPlayer?.querySelector('[data-canvas]') as HTMLElement | null, b = el?.getBoundingClientRect();
       const dw = Number((el?.getAttribute('data-canvas') ?? '').split('x')[0]);
-      return (cv = b && dw > 0 && b.width > 0 ? { b, dw } : null);
+      return (cv = el && b && dw > 0 && b.width > 0 ? { b, dw, el } : null);
     };
     const sx = scrollX || 0, sy = scrollY || 0;
 
@@ -250,7 +352,7 @@ export class ExplainerFlight extends HTMLElement {
     const homes = new Set<Element>(anchorHome.filter((e): e is Element => !!e));
     if (live) homes.add(live);
     // the real element shows only while the object rests at one of the page homes; otherwise the home is hidden (layout kept) and its stays parts stay visible
-    const here = box.restAnchor == null ? null : anchorHome[box.restAnchor] ?? null;
+    const rest = box.restAnchor, here = rest == null ? null : anchorHome[rest] ?? null;
     for (const h of homes) {
       const own = h === here;
       this.vis(h, homeVisibility('home', own));
@@ -259,13 +361,21 @@ export class ExplainerFlight extends HTMLElement {
     const arr = arrivalOf(this.chain, q, box);
     this.mark(arr.here != null ? measured[arr.here].el : null, arr.target != null ? measured[arr.target].el : null, arr.p);
     const f = this.flier;
-    const flierOn = box.visible && !here && box.rect.w > 0 && box.rect.h > 0 && !!f.firstChild;
+    // no page home at the rest anchor: rest in a dock there (the flier hides); a dock that is not the resting one hides
+    let docked: HTMLElement | null = null;
+    if (rest != null && !here && box.visible) {
+      const a = this.cfg.anchors[rest], c = 'canvas' in a ? canvas() : null;
+      docked = this.dock(rest, 'canvas' in a ? c?.el ?? null : measured[rest].el, rects[rest], 'canvas' in a && c ? a.canvas : null);
+    }
+    for (const d of this.docks.values()) if (d.el !== docked && d.el.style.display !== 'none') d.el.style.display = 'none';
+    const flierOn = box.visible && !here && !docked && box.rect.w > 0 && box.rect.h > 0 && !!f.firstChild;
     if (!flierOn) { if (f.style.display !== 'none') f.style.display = 'none'; f.removeAttribute('data-s'); }
     else {
       const r = box.rect;
       const style = `display:block;width:${r3(r.w)}px;height:${r3(r.h)}px;opacity:${r3(box.opacity)};transform:translate(${r3(r.x)}px,${r3(r.y)}px) rotate(${r3(box.rot)}deg) scale(${r3(box.scale)})`;
       if (f.getAttribute('data-s') !== style) { f.setAttribute('data-s', style); f.style.cssText = `position:absolute;left:0;top:0;transform-origin:50% 50%;will-change:transform;${style}`; }
     }
+    if (this.moving && !this.reduced) this.invalidate(); // a trigger is moving: paint again next frame, and only while it moves
     const dt = performance.now() - t0;
     this.stats.paints++; this.stats.ms += dt; this.stats.max = Math.max(this.stats.max, dt);
   }

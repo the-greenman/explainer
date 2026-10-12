@@ -11,7 +11,7 @@ export { registerFlightEffects, flightEffects, getFlightEffect, listFlightEffect
 export { builtInEffects } from './effects/index.ts';
 export { effectProblems } from './contract.ts';
 export { chainBoxAt, rectsClose } from './chain.ts';
-export { playerProgress, gatePlayerProgress, scrollProgress, scrollStop, settleProgress, type PlayerView } from './drivers.ts';
+export { playerProgress, gatePlayerProgress, scrollProgress, scrollStop, settleProgress, latchProgress, latchSet, type PlayerView, type Latch } from './drivers.ts';
 export { homeVisibility, toDocRect, fromDocRect } from './homes.ts';
 export { arrivalOf, type Arrival } from './arrival.ts';
 export { phraseTimes, type PhraseOptions } from './phrases.ts';
@@ -21,3 +21,16 @@ export { ExplainerFlight };
 registerBuiltInEffects();
 if (!sceneExtensions().some((e) => e.name === markerExtension.name)) registerSceneExtension(markerExtension);
 if (!customElements.get('explainer-flight')) customElements.define('explainer-flight', ExplainerFlight);
+
+// Buttons: <button data-flight-action="go|back|toggle" data-flight-name="takeoff" [data-flight-target="#flight"]>. One delegated listener, installed once.
+const FLIGHT_ACTION = '[data-flight-action][data-flight-name]';
+if (typeof document !== 'undefined' && !(globalThis as any).__explainerFlightActions) {
+  (globalThis as any).__explainerFlightActions = true;
+  document.addEventListener('click', (e) => {
+    const b = (e.target as Element | null)?.closest?.(FLIGHT_ACTION);
+    const act = b?.getAttribute('data-flight-action');
+    if (!b || (act !== 'go' && act !== 'back' && act !== 'toggle')) return;
+    const sel = b.getAttribute('data-flight-target');
+    for (const f of Array.from(document.querySelectorAll(sel || 'explainer-flight'))) (f as ExplainerFlight)[act]?.(b.getAttribute('data-flight-name')!);
+  });
+}

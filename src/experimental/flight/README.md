@@ -15,18 +15,18 @@ import { registerFlightEffects } from 'explainer/experimental/flight';   // defi
 
 | File | |
 |---|---|
-| `index.ts` | the public surface of the subpath; defines the element and registers the built-ins |
+| `index.ts` | the public surface of the subpath; defines the element, registers the built-ins and installs the `data-flight-action` click handler |
 | `types.ts` | `Rect`, `Pose`, `FlightEffect`, `ChainStop`, `FlightBox`, `IDLE` |
 | `effect.ts` | the registry: `registerFlightEffects`, `flightEffects(name)`, `getFlightEffect(name)` (unknown name: `cut`, one warning), `listFlightEffects()` |
 | `effects/` | the built-ins, one module each: `cut`, `glide`, `fall`, `pop`, `hop` (tunable constants are named in each: `FALL_SPLIT`, `POP_OVERSHOOT`, ...) |
 | `chain.ts` | pure: `chainBoxAt(stops, q, rects)`; names no effect |
-| `drivers.ts` | pure: `playerProgress`, `gatePlayerProgress`, `scrollProgress`, `scrollStop`, `settleProgress` |
+| `drivers.ts` | pure: `playerProgress`, `gatePlayerProgress`, `scrollProgress`, `scrollStop`, `settleProgress`, the trigger clock `latchSet` / `latchProgress` |
 | `homes.ts` | pure: `homeVisibility`, `toDocRect` / `fromDocRect` |
 | `arrival.ts` | pure: `arrivalOf(stops, q, box)`: which anchor the object rests at / moves toward |
 | `phrases.ts` | pure: `phraseTimes(vtt, phrases)` |
 | `marker.ts` | DOM: the in-video marker, a scene extension |
 | `pure.ts` | the subpath `explainer/experimental/flight/pure`: everything above that needs no DOM |
-| `element.ts` | DOM: `<explainer-flight>` |
+| `element.ts` | DOM: `<explainer-flight>`: measuring, painting, docks, trigger bindings and the `go` / `back` / `toggle` methods |
 
 ## Markup
 
@@ -43,6 +43,7 @@ import { registerFlightEffects } from 'explainer/experimental/flight';   // defi
 - **Anchor** `{selector}`: any element in the document, including one in a scene (light DOM). A comma list takes the first match with a box. `{canvas:[x,y,w,h]}`: design-canvas px of the `for` player (always that player, even when every stop names another), mapped through `[data-canvas]`.
 - **Player stop** `{ "player": "#p1", "segment": "s1", "at": 2, "for": 1, "anchor": 1, "fx": "fall" }`. `player` defaults to the element's `for` (the single-player form). Progress q = (t - at) / for in that segment; IDLE (not started) in another segment or before `at`; 1 for an `instant` effect or `for` 0.
 - **Scroll stop** `{ "scroll": { "from": "#part1", "to": "#part2" }, "anchor": 2, "fx": "glide" }`. q is 0 when the bottom of `from` is at the viewport middle and 1 when the top of `to` is; not started at 0. Touching or overlapping parts (gap <= 0) are a step.
+- **Trigger stop** `{ "on": { "name": "takeoff" }, "for": 1.2, "anchor": 2, "fx": "hop" }`. See "Triggered stops". `for` is its length in seconds.
 - `fx` is the name of a registered effect (default `cut`).
 
 ## The rule: the last started stop
@@ -81,6 +82,34 @@ A duplicate name throws. An unknown `fx` is a `cut` with a console warning (once
 - `data-flight-home` marks a real page element that shows the object (the `object` match is one; so is any selector anchor you mark). While the object rests at a home that element shows and the flier is hidden; at every other time all homes are `visibility:hidden` (layout kept) and are restored on disconnect. Without JavaScript every home shows.
 - `data-flight-stays` on a descendant of a home: while the object is away the home is hidden but that part stays visible (a ring that stays behind while the dot flies). The flier is the home without its stays parts, so it must not depend on scene-scoped CSS (use presentation attributes).
 - The object is looked up each paint (a scene mounts later than the element connects); until the flier is built, the first match inside a `<template>` is used. After that templates are not scanned.
+
+## Docking
+
+The flier lives in a `position:fixed` layer and is moved in a `requestAnimationFrame` after each scroll event, while the browser scrolls the page at once. A flier that rests on a plain anchor would trail the page and snap back (a bounce). So at rest it is not the flier that shows:
+
+- When the object rests at an anchor that has no `data-flight-home` element, a **dock** shows there and the fixed flier hides. A dock is `<div data-flight-dock aria-hidden="true">` holding a clone of the object (the same clone as the flier: no ids, no home or stays marks). The browser scrolls it with the page.
+- **Selector anchor:** the dock is the last child of the matched element, or, when that element cannot hold children (`img`, `input`, `video`, `audio`, `canvas`, `iframe`, `br`, `hr`, `embed`, `object`, `textarea`, `select`), its next sibling (SVG anchors too). The engine never sets `position` or any style on the anchor. The dock is `position:absolute` at `left:0;top:0` and placed by a `translate`: each paint reads the dock's rect, takes `origin = rect - current translate` and writes the translate that puts it on the anchor. The origin does not change on a scroll, so a scroll paint writes nothing; it writes only when the change is 0.5 px or more. A scale on an ancestor (a design canvas) is read from the dock's rendered size and allowed for.
+- **Canvas anchor:** the dock is appended to the `for` player's `[data-canvas]` with `left/top/width/height` in design px from the anchor; it is never measured.
+- An anchor with no box (a hidden scene, not measured yet) gets no dock: the fixed flier shows as before.
+- On take-off the dock hides and the flier shows in the same paint, at the same viewport rect: no jump. A dock whose host changed, or that was removed (a scene remounted), is built again. All docks are removed on disconnect. The render mode creates none.
+- Arrival marking (`data-flight-here`, `--flight-p`) is unchanged and stays on the anchor.
+
+## Triggered stops
+
+A third stop driver, `on`: the stop has a small clock of its own, started and reversed by a trigger. Stops of all drivers follow the same "last started wins" rule, and reduced motion settles them like the others.
+
+```json
+{ "on": { "name": "takeoff" },             "for": 1.2, "anchor": 2, "fx": "hop" }
+{ "on": { "enter": "#part3" },             "for": 1,   "anchor": 3, "fx": "fall" }
+{ "on": { "var": "step", "value": "two" }, "for": 0.8, "anchor": 1, "fx": "glide" }
+```
+
+- **`name`:** `flight.go(name)` switches on every stop with that name, `flight.back(name)` switches them off (the reverse flight), `flight.toggle(name)` flips them. Buttons: `<button data-flight-action="go|back|toggle" data-flight-name="takeoff" [data-flight-target="#sel"]>`; one delegated click listener (installed by this module), default target every `<explainer-flight>`.
+- **`enter`:** a selector. On when that element scrolls into view, off when scrolled back above it (`bindEnter` from `src/triggers.ts`). A missing element warns once.
+- **`var`:** on while the variable equals `value`, from the flight's store (`<explainer-scope>` or the document), read at connect and on every change. True at load: already finished, not animated.
+- **Clock:** each stop keeps a `Latch` (`{ dir, since, from }`); progress is `latchProgress(latch, now, len)`. Switching the other way starts from the current progress, so a reversal halfway is continuous. Nothing accumulates. `len` 0, or an `instant` effect, is a step. Never triggered is IDLE.
+- **First stop:** if no stop has started the object rests at the first stop's anchor. A trigger-only flight needs a first stop that nothing fires (for example `{ "on": { "name": "init" }, "anchor": 0 }`) to name the rest place. A flight with only trigger or scroll stops needs no player.
+- **Painting:** while a latch is between its ends the element asks for another frame; at rest there is no frame loop. A flight rests only at anchors: there is no mid-air pause.
 
 ## Render is inert
 
@@ -155,6 +184,8 @@ No new mechanism: the marker element is the flight's object and a home.
 - **Enter mode vs scroll stops.** Clock stops and scroll stops of different drivers disagree on scroll-back and on fast jumps (the object can be left at an off-screen anchor). Reliable with `play="scrub"` or with all-clock stops.
 - **A scroll stop whose `to` is at the end of the page** never completes (its top never reaches the middle); give the page room.
 - **The layer is above everything** (z-index 2147483000, fixed in `body`): above a site's sticky header or modal, and not inside a fullscreen player.
+- **Triggered stops follow last-started-wins across drivers.** A triggered stop declared after a clock or scroll stop outranks it once it has fired; no extra arbitration.
+- **A dock puts one `aria-hidden` child into the site's markup** (inside the anchor, or after a void one). CSS such as `:empty`, `> :last-child`, `:last-child` or a flex/grid gap on the anchor sees it (it is `position:absolute`, so it takes no space in the flow). Docks are positioned for ancestor scale and translation, not rotation or skew. An ancestor with `overflow:hidden` clips it, as it clips the anchor.
 - **Accessibility is untested** with assistive technology. The flier is `aria-hidden`; hiding a home hides its accessible name and any focusable content while the object is away.
 - Not tried: Safari, Firefox, touch, smooth-scroll momentum, a sticky player taller than the viewport.
 - Flights are not part of a manifest or the SRS types.

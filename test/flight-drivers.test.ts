@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { gatePlayerProgress, playerProgress, scrollProgress, scrollStop, settleProgress } from '../src/experimental/flight/drivers.ts';
+import { gatePlayerProgress, playerProgress, scrollProgress, scrollStop, settleProgress, latchProgress, latchSet } from '../src/experimental/flight/drivers.ts';
 import { fromDocRect, homeVisibility, toDocRect } from '../src/experimental/flight/homes.ts';
+import { started } from '../src/experimental/flight/types.ts';
 import { IDLE } from '../src/experimental/flight/types.ts';
 
 test('IDLE is the one not-started value', () => {
@@ -102,4 +103,51 @@ test('gate: guide page under reduced motion. Three players at their still time; 
   const tops = { p1: 200, p2: 1200, p3: 2400 }; // at the top of the page: p1 is in view
   const q = [gatePlayerProgress(1, view({ top: tops.p1 }), true, LINE), gatePlayerProgress(1, view({ top: tops.p2 }), true, LINE), gatePlayerProgress(1, view({ top: tops.p2 }), true, LINE)];
   assert.deepEqual(q, [1, IDLE, IDLE], 'p2 stops do not count at load: the circle is not pinned at part 3');
+});
+
+test('latch: null is IDLE; on runs 0..1 over len and stays 1; a started stop at exactly 0 counts', () => {
+  assert.equal(latchProgress(null, 5, 1), IDLE);
+  const on = latchSet(null, true, 10, 2);
+  assert.equal(latchProgress(on, 10, 2), 0);
+  assert.ok(started(latchProgress(on, 10, 2)), 'on at its first instant has started');
+  assert.equal(latchProgress(on, 11, 2), 0.5);
+  assert.equal(latchProgress(on, 12, 2), 1);
+  assert.equal(latchProgress(on, 99, 2), 1, 'clamped');
+  assert.equal(latchProgress(on, 5, 2), 0, 'never below 0 while on');
+});
+
+test('latch: monotonic forward; off runs back to IDLE', () => {
+  const on = latchSet(null, true, 0, 4);
+  let prev = -1;
+  for (let t = 0; t <= 5; t += 0.25) { const p = latchProgress(on, t, 4); assert.ok(p >= prev); prev = p; }
+  const off = latchSet(on, false, 10, 4); // finished at 10: from 1
+  assert.equal(latchProgress(off, 10, 4), 1);
+  assert.equal(latchProgress(off, 12, 4), 0.5);
+  assert.equal(latchProgress(off, 14, 4), IDLE, 'back at 0 is not started');
+  assert.equal(latchProgress(off, 50, 4), IDLE);
+});
+
+test('latch: a reversal half way is continuous, both ways', () => {
+  const on = latchSet(null, true, 0, 2);
+  const off = latchSet(on, false, 0.5, 2); // at 0.25
+  assert.equal(latchProgress(on, 0.5, 2), 0.25);
+  assert.equal(latchProgress(off, 0.5, 2), 0.25);
+  assert.equal(latchProgress(off, 0.75, 2), 0.125);
+  const again = latchSet(off, true, 0.75, 2);
+  assert.equal(latchProgress(again, 0.75, 2), 0.125);
+  assert.equal(latchProgress(again, 1.75, 2), 0.625);
+});
+
+test('latch: the same direction returns the same latch; off from never is IDLE', () => {
+  const on = latchSet(null, true, 1, 2);
+  assert.equal(latchSet(on, true, 5, 2), on);
+  const off = latchSet(null, false, 1, 2);
+  assert.equal(latchProgress(off, 3, 2), IDLE);
+  assert.equal(latchSet(off, false, 9, 2), off);
+});
+
+test('latch: len 0 is a step (on = 1, off = IDLE), len < 0 too', () => {
+  assert.equal(latchProgress(latchSet(null, true, 3, 0), 3, 0), 1);
+  assert.equal(latchProgress(latchSet(latchSet(null, true, 3, 0), false, 4, 0), 4, 0), IDLE);
+  assert.equal(latchProgress(latchSet(null, true, 3, -1), 3, -1), 1);
 });
