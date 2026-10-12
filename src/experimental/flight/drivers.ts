@@ -42,3 +42,25 @@ export function scrollProgress(fromBottom: number, toTop: number, line: number):
 export const scrollStop = (q: number): number => (q > 0 ? q : IDLE);
 /** Reduced motion: every started stop is finished, so only rest states are shown. */
 export const settleProgress = (q: number[]): number[] => q.map((x) => (started(x) ? 1 : IDLE));
+
+/**
+ * A trigger stop's own small clock: the last switch (`dir` 1 on / -1 off), when it happened (`since`, the caller's clock in seconds)
+ * and the progress it started from. `null` = never triggered = IDLE.
+ */
+export type Latch = { dir: 1 | -1; since: number; from: number };
+
+/** Progress of a trigger stop at `now`: from + dir * (now - since) / len, clamped to 0..1. `len` <= 0 is a step (on = 1, off = IDLE). Off and back at 0 is IDLE; on at exactly 0 has started. */
+export function latchProgress(l: Latch | null, now: number, len: number): number {
+  if (!l) return IDLE;
+  if (!(len > 0)) return l.dir === 1 ? 1 : IDLE;
+  const v = Math.min(1, Math.max(0, l.from + (l.dir * (now - l.since)) / len));
+  return l.dir === -1 && v <= 0 ? IDLE : v;
+}
+
+/** Switch a latch on or off at `now`: the new one starts from the current progress, so a reversal halfway is continuous. The same direction returns `l` itself. */
+export function latchSet(l: Latch | null, on: boolean, now: number, len: number): Latch {
+  const dir = on ? 1 : -1;
+  if (l && l.dir === dir) return l;
+  const p = latchProgress(l, now, len);
+  return { dir, since: now, from: started(p) ? p : 0 };
+}

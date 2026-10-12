@@ -33,7 +33,9 @@ const frames = (page) => page.evaluate(async () => { await new Promise((r) => re
 const snap = (page) => page.evaluate(({ ANCHORS, NAMES }) => {
   const fl = document.querySelector('[data-flight-layer]').firstChild;
   const rc = (el) => { const b = el.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; };
-  const on = getComputedStyle(fl).display !== 'none', f = on ? rc(fl) : null;
+  // at a plain rest anchor the object is a dock (a clone inside the page), not the fixed flier
+  const dock = [...document.querySelector('explainer-flight').docks.values()].map((d) => d.el).find((e) => getComputedStyle(e).display !== 'none');
+  const on = getComputedStyle(fl).display !== 'none' || !!dock, f = on ? rc(dock ?? fl) : null;
   const vis = (s) => getComputedStyle(document.querySelector(s)).visibility;
   let where = on ? 'moving' : (vis('#logo-h') === 'visible' ? 'header' : vis('#end-home') === 'visible' ? 'end' : 'NOWHERE');
   if (on) ANCHORS.forEach((s, i) => { const a = rc(document.querySelector(s)); if (Math.abs(a.x - f.x) < 1 && Math.abs(a.y - f.y) < 1 && Math.abs(a.w - f.w) < 1) where = NAMES[i]; });
@@ -107,6 +109,28 @@ for (const mode of ['enter', 'scrub']) {
   for (const [i, y] of ys.entries()) fw.push(await shot(y, `fwd-${String(i).padStart(2, '0')}`));
   for (const [i, y] of [...ys].reverse().entries()) bw.push(await shot(y, `back-${String(i).padStart(2, '0')}`));
   console.log('   filmstrip frames written:', fw.length + bw.length);
+  await ctx.close();
+}
+
+// ---- docking: at a plain rest anchor (#a1) the object is a clone inside the page; a scroll moves it with the page at once (no rAF between)
+{
+  const { ctx, page } = await open('enter');
+  const y = await page.evaluate(() => Math.round(scrollY + document.querySelector('#part1').getBoundingClientRect().top - 100));
+  await settle(page, 'enter', y, [2, 0, 0]);
+  const r = await page.evaluate(() => {
+    const d = document.querySelector('#a1 [data-flight-dock]'), fl = document.querySelector('[data-flight-layer]').firstChild;
+    if (!d) return { dock: false };
+    const t0 = d.getBoundingClientRect().top, ar = document.querySelector('#a1').getBoundingClientRect();
+    const sy = scrollY; scrollBy(0, 150); const moved = scrollY - sy; // same task: no frame has run
+    const t1 = d.getBoundingClientRect().top;
+    return { dock: true, aria: d.getAttribute('aria-hidden'), shown: getComputedStyle(d).display !== 'none', flierHidden: getComputedStyle(fl).display === 'none', d: t1 - t0, moved, onAnchor: Math.abs(d.getBoundingClientRect().height - ar.height) < 1, anchorPos: getComputedStyle(document.querySelector('#a1')).position };
+  });
+  console.log('   dock:', JSON.stringify(r));
+  ok(r.dock && r.shown && r.flierHidden, 'docking: resting at the plain anchor #a1 shows the dock and hides the fixed flier');
+  ok(r.dock && r.moved > 0 && Math.abs(r.d + r.moved) <= 1, `docking: a ${r.moved} px scroll moved the dock by ${r.d} px, read synchronously (no bounce)`);
+  ok(r.dock && r.aria === 'true', 'docking: the dock is aria-hidden');
+  await frames(page);
+  ok(await page.evaluate(() => getComputedStyle(document.querySelector('[data-flight-layer]').firstChild).display === 'none' && !!document.querySelector('#a1 [data-flight-dock]')), 'docking: after the frame the dock is still the resting object');
   await ctx.close();
 }
 

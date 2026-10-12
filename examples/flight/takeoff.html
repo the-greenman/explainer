@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight takeoff</title>
+<style>
+  body { margin: 0; font: 17px/1.6 system-ui, sans-serif; color: #23221f; background: #fffdf8; }
+  main { max-width: 44rem; margin: 0 auto; padding: 1rem 1rem 6rem; }
+  .box { box-sizing: border-box; width: 72px; height: 72px; border: 3px dashed #b9b3a4; border-radius: 50%; }
+  .row { display: flex; align-items: center; gap: 1rem; margin: 1rem 0; }
+  .row.right { justify-content: flex-end; }
+  .spacer { height: 140vh; }
+  .later { padding: 2rem 0; }
+  button, select { font: inherit; padding: .25rem .75rem; }
+  /* a plain anchor in the flow: the object rests inside it as a dock, so it scrolls with the page */
+  #rest { margin-left: 2rem; }
+</style>
+</head>
+<body>
+<main>
+<h1>Take off</h1>
+<p>The circle rests on a plain box in the page (no <code>data-flight-home</code>). Scroll: it moves with the page, with no bounce. Then use the buttons, scroll to the section below, or pick a spot.</p>
+
+<div class="row">
+  <div class="box" id="rest"></div>
+  <button type="button" data-flight-action="go" data-flight-name="takeoff">Take off</button>
+  <button type="button" data-flight-action="back" data-flight-name="takeoff">Land</button>
+  <button type="button" data-flight-action="toggle" data-flight-name="takeoff">Toggle</button>
+</div>
+<div class="row">
+  <div class="box" id="perch"></div><span>perch: where Take off lands</span>
+</div>
+<div class="row">
+  <label for="spot">Spot</label>
+  <select id="spot" data-explainer-var="spot"><option value="a">a</option><option value="b">b</option></select>
+  <div class="box" id="spot-b"></div><span>when the spot is b it flies here (it outranks the others once started)</span>
+</div>
+
+<div class="spacer"><p>Scroll on. A section further down brings the circle to it when it comes into view.</p></div>
+
+<section class="later" id="later">
+  <h2>A later section</h2>
+  <div class="row right"><span>landed here on entering view</span><div class="box" id="later-box"></div></div>
+</section>
+<div class="spacer"></div>
+</main>
+
+<!-- The object lives in a template, so only the flier and the docks show it. Stops, in order (the last one that has started places the object):
+     0 never fires: it only makes anchor 0 the rest place; 1 on the buttons (data-flight-name="takeoff"); 2 when #later enters view; 3 while the variable spot is b. -->
+<template><svg id="ball" viewBox="0 0 64 64" role="img" aria-label="Ball"><circle cx="32" cy="32" r="30" fill="#2f7d62"/></svg></template>
+<explainer-flight><script type="application/json">
+{ "object": "#ball",
+  "anchors": [ { "selector": "#rest" }, { "selector": "#perch" }, { "selector": "#later-box" }, { "selector": "#spot-b" } ],
+  "stops": [
+    { "on": { "name": "init" }, "anchor": 0, "fx": "cut" },
+    { "on": { "name": "takeoff" }, "for": 1.2, "anchor": 1, "fx": "hop" },
+    { "on": { "enter": "#later" }, "for": 1, "anchor": 2, "fx": "glide" },
+    { "on": { "var": "spot", "value": "b" }, "for": 0.8, "anchor": 3, "fx": "fall" } ] }
+</script></explainer-flight>
+
+<script type="module">
+  import '../../src/index.ts'; // boots bindInputs (the select -> the variable store)
+  import '../../src/experimental/flight/index.ts';
+</script>
+</body>
+</html>

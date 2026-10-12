@@ -8,8 +8,9 @@ An object (a logo) moves between **anchors** on one reversible timeline: a box o
 
 - `index.html`, `flight.css`: three players, each with its own flight (demo 3: a scene logo whose ring stays behind). `?render` gives the players the `render` attribute.
 - `karaoke.html`, `karaoke.css`, `karaoke.vtt`: the in-video marker (a ball hopping to concepts on the narration's phrases, times from `phraseTimes`), the handoff to the page (the ball falls out of the video) and the reverse. `check-karaoke.mjs` checks it in Chromium; rendered offline (`node scripts/render.mjs --page http://localhost:5199/examples/flight/karaoke.html --selector '#k1' --mode overlay`) the ball is in the video and the flight does nothing. Captions: a `none` segment has no media element, so the player draws no captions for it (the VTT is read only for the phrase times).
+- `takeoff.html`, `check-takeoff.mjs`: an object resting on a plain anchor in the page flow (docked: it scrolls with the page), then taking off on buttons (`data-flight-action`), when a section enters view, and when a `<select data-explainer-var>` changes.
 - `guide.html`: one object carried through three parts of a page (`?mode=scrub` for scrub mode).
-- `check.mjs` (index) and `check-guide.mjs` (guide): headless Chromium checks. `npm run check:flight` runs both; they need a server, so start `npx vite --port 5199 --strictPort` from the repo root first (`URL=` overrides the page, `PLAYWRIGHT=` the playwright module, `SHOTS=` or the first argument the screenshot directory, default `<os tmpdir>/explainer-flight/{index,guide}`). Exit 1 on a failed assertion.
+- `check.mjs` (index), `check-guide.mjs` (guide) and `check-takeoff.mjs` (takeoff): headless Chromium checks. `npm run check:flight` runs them with `check-karaoke.mjs`; they need a server, so start `npx vite --port 5199 --strictPort` from the repo root first (`URL=` overrides the page, `PLAYWRIGHT=` the playwright module, `SHOTS=` or the first argument the screenshot directory, default `<os tmpdir>/explainer-flight/{index,guide}`). Exit 1 on a failed assertion.
 - The pure and element tests are `test/flight-*.test.ts`, part of `npm test`.
 
 ## The guide page
@@ -34,6 +35,10 @@ Observed with `check.mjs` in headless Chromium (1100x800), unless marked otherwi
 - **A bug found by the checks:** after the flier was hidden, an unchanged style string made the next show a no-op (it stayed `display:none`). Fixed by clearing the cached style when hiding.
 - **Not observed:** layering against a site's sticky header (this page has none; the layer has `z-index:2147483000` so it would be above it, and over a modal too), Safari/Firefox, touch devices, a real narrow viewport (the portrait canvas), fullscreen (a fixed layer on `body` would not be inside a fullscreen player), multi-segment explainers, and how the bounce looks to a human (only screenshots at single frames were looked at).
 - The `explainer:time` event only fires when `t` or the segment changes, so a player that is idle gives no repaint on its own; the element paints once on connect from the player's clock if there is one.
+
+### Finding: a flier at rest on a plain anchor bounced on scroll
+
+The fixed flier is repainted in a `requestAnimationFrame` after the scroll event, while the browser has already scrolled the page; a flier "at rest" on a plain (non-`data-flight-home`) anchor trailed the page by a frame or more and then snapped back. Fixed by docking: at rest a clone sits inside the page next to the anchor (see "Docking" in the module README) and the fixed flier hides. `check-guide.mjs` ("docking") scrolls 150 px at the anchor `#a1` and reads the dock's rect in the same task, before any frame: it moved by exactly the scroll. `check.mjs` now finds the object in a dock at rest; its lag probe measures 0 px for a docked object (it was about 5 px for the fixed flier).
 
 ### Findings from the three-part guide (Chromium 1100x800, `check-guide.mjs`; "observed" unless marked)
 

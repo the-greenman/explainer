@@ -35,6 +35,7 @@ const world = (id) => page.evaluate(async ({ id }) => {
   const fl = [...li].map((l) => l.firstChild);
   return {
     t: p.clock.t, stops, ball: rc(ball), ballVis: getComputedStyle(ball).visibility, ballOp: getComputedStyle(ball).opacity, ballStyle: ball.getAttribute('style'),
+    docked: [...document.querySelectorAll('[data-flight-dock]')].some((d) => getComputedStyle(d).display !== 'none'), // resting on a plain anchor: a dock instead of the fixed flier
     fliers: fl.map((f) => (getComputedStyle(f).display !== 'none' ? rc(f) : null)), flierStyles: fl.map((f) => f.getAttribute('data-s') ?? ''),
     slotHere: document.querySelector('#slot').hasAttribute('data-flight-here'), slotP: document.querySelector('#slot').style.getPropertyValue('--flight-p'),
     landingBorder: getComputedStyle(document.querySelector('#landing')).borderTopColor,
@@ -96,14 +97,14 @@ w = await at('#k1', fallAt + 0.05);
   ok(w.fliers[0] !== null && near(centre(w.fliers[0]).x, last.x, 6) && near(centre(w.fliers[0]).y, last.y + last.h / 2, 6), 'p1 t=9.05: the flier takes off from where the marker was');
 }
 w = await at('#k1', 11.5);
-ok(w.slotHere && w.fliers[0] !== null && w.ballVis === 'hidden' && w.landingBorder !== (await at('#k1', 3)).landingBorder, 'p1 t=11.5 (landed): the slot has data-flight-here, the page block highlights, the scene marker stays hidden');
+ok(w.slotHere && (w.fliers[0] !== null || w.docked) && w.ballVis === 'hidden' && w.landingBorder !== (await at('#k1', 3)).landingBorder, 'p1 t=11.5 (landed): the slot has data-flight-here, the page block highlights, the scene marker stays hidden');
 await page.locator('#k1').locator('xpath=ancestor::main').screenshot({ path: join(SHOTS, 'p1-landed-page.png') }).catch(() => {});
 w = await at('#k1', 3);
 ok(!w.slotHere && w.slotP === '', 'p1 t=3 (reverse past the fall): the slot is unmarked again');
 
 // ---- order independence, p1 and p2
 const decls = (s) => (s ?? '').split(';').map((x) => x.trim()).filter(Boolean).sort().join(';'); // declaration order is not state
-const sigOf = (w) => [decls(w.ballStyle), w.ballVis, w.stops.map((s) => [s.here, s.mp]), w.fliers, w.flierStyles, w.slotHere, w.slotP, w.pball];
+const sigOf = (w) => [w.docked, decls(w.ballStyle), w.ballVis, w.stops.map((s) => [s.here, s.mp]), w.fliers, w.flierStyles, w.slotHere, w.slotP, w.pball];
 const sig = (w) => JSON.stringify(sigOf(w));
 const times = [0, 0.7, 2.7, 3.0, 4.6, 5.9, 7.4, 8.9, 9.05, 9.6, 10.3, 11.5, 12];
 for (const id of ['#k1', '#k2']) {
